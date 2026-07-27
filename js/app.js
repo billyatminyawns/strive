@@ -15,6 +15,7 @@
       return { view: 'fan', key: 'fan/' + screen, params: parts.slice(2) };
     }
     if (parts[0] === 'studio') return { view: 'studio', key: 'studio/' + (parts[1] || 'overview'), params: parts.slice(2) };
+    if (parts[0] === 'athlete') return { view: 'athlete', key: 'athlete/' + (parts[1] || 'home'), params: parts.slice(2) };
     return { view: 'landing', key: null, params: [] };
   }
 
@@ -38,6 +39,35 @@
       }
       return `<button class="tab${active === t.id ? ' on' : ''}" data-action="nav" data-arg="${arg('#/fan/' + t.id)}">
         <div style="position:relative">${t.ic}</div><span>${t.label}</span></button>`;
+    }).join('')}</div>`;
+  }
+
+  /* ---------- athlete chrome (Angela's pocket studio) ---------- */
+  const ATH_TABS = [
+    { id: 'home', label: 'Today', ic: icon.home },
+    { id: 'approve', label: 'Approve' },
+    { id: 'capture', label: 'Capture', orb: true },
+    { id: 'studio', label: 'Studio' },
+    { id: 'profile', label: 'You' },
+  ];
+
+  const approveIcon = `<svg width="20" height="20" viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="12" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M6.5 10l2.4 2.4L13.5 7.6" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>`;
+  const studioIcon = `<svg width="20" height="20" viewBox="0 0 20 20"><rect x="3" y="11" width="3" height="6" rx="1" fill="currentColor"/><rect x="8.5" y="7" width="3" height="10" rx="1" fill="currentColor"/><rect x="14" y="3" width="3" height="14" rx="1" fill="currentColor"/></svg>`;
+
+  function athleteTabbar(active) {
+    const s = Store.get();
+    const waiting = s.inbox.filter(q => q.status === 'draft').length;
+    return `<div class="tabbar">${ATH_TABS.map(t => {
+      if (t.orb) {
+        return `<button class="ask-tab" data-action="nav" data-arg="${arg('#/athlete/capture')}">
+          <div class="orb" style="${active === t.id ? '' : 'background:#2E3A31'}">${icon.mic(active === t.id ? 'var(--ink)' : 'var(--mint)', 20)}</div>
+          <span style="color:${active === t.id ? 'var(--mint)' : 'var(--dim)'}">${t.label}</span></button>`;
+      }
+      const ic = t.id === 'approve' ? approveIcon : t.id === 'studio' ? studioIcon : t.id === 'profile' ? icon.you : t.ic;
+      return `<button class="tab${active === t.id ? ' on' : ''}" data-action="nav" data-arg="${arg('#/athlete/' + t.id)}">
+        <div style="position:relative">${ic}
+          ${t.id === 'approve' && waiting ? `<span class="dot" style="width:15px;height:15px;border-radius:8px;top:-5px;right:-8px;display:flex;align-items:center;justify-content:center;font-size:8.5px;font-weight:900;color:#141614">${waiting}</span>` : ''}
+        </div><span>${t.label}</span></button>`;
     }).join('')}</div>`;
   }
 
@@ -118,7 +148,13 @@
           <span class="d">Fans train, listen, and ask. Every reply comes back in Angela's voice — not a chatbot, her approved answers, spoken.</span>
           <span class="go btn btn-mint">Open the fan app</span>
         </button>
-        <button class="door fadeup" style="animation-delay:0.32s" data-action="nav" data-arg="${arg('#/studio/overview')}">
+        <button class="door fadeup" style="animation-delay:0.32s" data-action="nav" data-arg="${arg('#/athlete/home')}">
+          <span class="k" style="color:var(--lav)">ATHLETE STUDIO · MOBILE</span>
+          <span class="t">Angela's pocket studio</span>
+          <span class="d">Swipe to approve replies, hold to capture stories in her voice, and run the whole thing from the tunnel or the tarmac.</span>
+          <span class="go btn btn-mint">Open pocket studio</span>
+        </button>
+        <button class="door fadeup" style="animation-delay:0.4s" data-action="nav" data-arg="${arg('#/studio/overview')}">
           <span class="k">ATHLETE STUDIO · DESKTOP</span>
           <span class="t">Where Angela runs it</span>
           <span class="d">Curate content, tune the AI voice, and approve every reply before it ships. One hour a week, content at scale.</span>
@@ -197,6 +233,10 @@
           const body = screen.render(s, r.params);
           const chrome = screen.noTabbar ? body : body + tabbar(screen.tab || '');
           inner = phoneFrame(`<div class="p-body">${chrome}</div>`, screen);
+        } else if (r.view === 'athlete') {
+          const body = screen.render(s, r.params);
+          const chrome = screen.noTabbar ? body : body + athleteTabbar(screen.tab || '');
+          inner = phoneFrame(`<div class="p-body">${chrome}</div>`, screen);
         } else {
           const sub = r.key.split('/')[1];
           const active = sub === 'scan' ? 'voice' : sub;   // scan is reached from Voice Studio
@@ -210,6 +250,7 @@
           <div class="views">
             <button class="${r.view === 'landing' ? 'on' : ''}" data-action="nav" data-arg="${arg('#/')}">Concept</button>
             <button class="${r.view === 'fan' ? 'on' : ''}" data-action="nav" data-arg="${arg('#/fan/home')}">Fan app</button>
+            <button class="${r.view === 'athlete' ? 'on' : ''}" data-action="nav" data-arg="${arg('#/athlete/home')}">Athlete</button>
             <button class="${r.view === 'studio' ? 'on' : ''}" data-action="nav" data-arg="${arg('#/studio/overview')}">Studio</button>
           </div>
           <div class="spacer"></div>

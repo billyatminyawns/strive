@@ -130,6 +130,16 @@
     },
   ];
 
+  // ---------- capture: story prompts (from the CI onboarding gap report — "6 stories she's never told publicly") ----------
+  const STORY_PROMPTS = [
+    { id: 'sp-nagano', title: 'The night before Nagano', hint: 'From your gap report — fans have never heard how you actually slept (or didn’t).' },
+    { id: 'sp-skates', title: 'Your first pair of skates', hint: 'Origin stories index 3× better than highlights. Where did they come from?' },
+    { id: 'sp-cut', title: 'The hardest cut you survived', hint: 'You reference this in Q&As but the full story isn’t in the knowledge base yet.' },
+    { id: 'sp-harvard', title: 'What Harvard taught you about hockey', hint: 'Bridges your two worlds — top-requested topic among Inner Circle fans.' },
+    { id: 'sp-mentor', title: 'The mentor who changed everything', hint: 'The twin has no source material on your early coaches.' },
+    { id: 'sp-ritual', title: 'Your weirdest pre-game ritual', hint: 'Light one — fans love these, and it humanizes the answers.' },
+  ];
+
   // ---------- discover ----------
   const ATHLETES = [
     { id: 'sana', name: 'Sana Ito', sport: 'Tennis', mono: 'SI', color: '#7EB3F7', line: 'Serve mechanics — Lesson 1 live now' },
@@ -210,7 +220,7 @@
   }
 
   window.Data = {
-    IMG, DROPS, SCHEDULED, COURSE, KB, SENSITIVE_WORDS, SENSITIVE_PREFIX, DECLINE_TEXT, ATHLETES,
+    IMG, DROPS, SCHEDULED, COURSE, KB, SENSITIVE_WORDS, SENSITIVE_PREFIX, DECLINE_TEXT, ATHLETES, STORY_PROMPTS,
     seed, isSensitive, findKb, draftFor, norm,
   };
 })();
