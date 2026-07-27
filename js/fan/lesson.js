@@ -5,6 +5,17 @@
 
   window.Screens = window.Screens || {};
 
+  // lesson → shipped drill sheet (l4 gap control, l5 small-rink, everything else the generic checklist)
+  const SHEET_FOR = {
+    l4: 'assets/sheets/gap-control-drill-sheet.pdf',
+    l5: 'assets/sheets/small-rink-defending.pdf',
+  };
+  const sheetFor = id => SHEET_FOR[id] || 'assets/sheets/tryout-prep-checklist.pdf';
+
+  const dlIconMint = `<svg width="12" height="12" viewBox="0 0 14 14" aria-hidden="true">
+    <path d="M7 1.5v7M4 5.7L7 8.7l3-3" stroke="var(--mint)" stroke-width="1.6" fill="none"/>
+    <path d="M2 10.5V12h10v-1.5" stroke="var(--mint)" stroke-width="1.6" fill="none"/></svg>`;
+
   Screens['fan/lesson'] = {
     tab: 'home',
     noTabbar: true,
@@ -37,7 +48,12 @@
           <div>
             <div style="font-size:10.5px;letter-spacing:0.16em;font-weight:800;color:var(--mint)">${esc(Data.COURSE.title.toUpperCase())} · LESSON ${parseInt(l.n, 10)}</div>
             <div style="font-size:22px;font-weight:800;margin-top:5px">${esc(l.title)}</div>
-            <div style="font-size:12px;color:var(--dim2);margin-top:3px">${l.min} min · Drill sheet included</div>
+            <div style="display:flex;align-items:center;gap:9px;margin-top:7px">
+              <span style="font-size:12px;color:var(--dim2)">${l.min} min</span>
+              <a href="${esc(sheetFor(l.id))}" download data-action="lesSheet"
+                style="display:inline-flex;align-items:center;gap:6px;text-decoration:none;font-size:11.5px;font-weight:800;color:var(--mint);border:1px solid var(--chip-line);background:var(--chip-bg);border-radius:999px;padding:5px 11px">
+                ${dlIconMint}Drill sheet (PDF)</a>
+            </div>
           </div>
 
           <div style="display:flex;align-items:center;gap:10px">
@@ -98,4 +114,8 @@
     Actions.setChapter({ i: a.i });
     Actions.completeChapter({ lesson: a.lesson, i: a.i });
   };
+
+  // Drill-sheet pill: the <a download> handles the actual PDF download natively; this just flashes
+  // a confirmation. No state write, so no re-render detaches the anchor before the download starts.
+  window.Actions.lesSheet = function () { App.toast('Downloaded ✓'); };
 })();

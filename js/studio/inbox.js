@@ -9,9 +9,15 @@
     url: 'inbox',
     render(s) {
       const all = s.inbox.filter(q => q.status !== 'declined');
-      const items = s.inboxFilter === 'inner' ? all.filter(q => q.tier === 'Inner Circle')
+      const rawQuery = s.inboxSearch || '';
+      const query = rawQuery.trim().toLowerCase();
+      const base = s.inboxFilter === 'inner' ? all.filter(q => q.tier === 'Inner Circle')
         : s.inboxFilter === 'flagged' ? all.filter(q => q.flagged)
         : all;
+      const items = query
+        ? base.filter(q => String(q.text || '').toLowerCase().includes(query)
+            || String(q.from || '').toLowerCase().includes(query))
+        : base;
       const sel = s.inbox.find(q => q.id === s.inboxSelected) || items[0];
       const waitingCount = s.inbox.filter(q => q.status === 'draft').length + s.inboxExtra;
       const innerCount = all.filter(q => q.tier === 'Inner Circle').length + 4;
@@ -19,7 +25,12 @@
 
       const list = `
         <div style="width:330px;flex-shrink:0;border-right:1px solid #1D221E;padding:0 16px 22px 0;display:flex;flex-direction:column;gap:14px;overflow:hidden">
-          <div class="card2" style="border-radius:10px;padding:10px 14px;font-size:12.5px;color:var(--dim)">Search questions…</div>
+          <div style="position:relative">
+            <input class="field-dark" style="border-radius:10px;width:100%;padding-right:34px" placeholder="Search questions…"
+              data-keep="inbox-search" data-input-action="inbSearch" value="${esc(rawQuery)}">
+            ${rawQuery ? `<button data-action="inbClearSearch" aria-label="Clear search"
+              style="position:absolute;right:6px;top:50%;transform:translateY(-50%);width:22px;height:22px;border-radius:50%;border:none;background:none;color:var(--dim);font-size:13px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</button>` : ''}
+          </div>
           <div style="display:flex;gap:6px;flex-wrap:wrap">
             <button data-action="setInboxFilter" data-arg="${arg({ f: 'all' })}"
               style="font-size:11px;font-weight:${s.inboxFilter === 'all' ? 800 : 700};background:${s.inboxFilter === 'all' ? 'var(--chip-bg)' : 'none'};color:${s.inboxFilter === 'all' ? 'var(--mint)' : 'var(--sub)'};border:1px solid ${s.inboxFilter === 'all' ? 'var(--chip-line)' : 'var(--line2)'};border-radius:999px;padding:5px 11px">All ${waitingCount}</button>
@@ -29,7 +40,7 @@
               style="font-size:11px;font-weight:700;background:${s.inboxFilter === 'flagged' ? 'var(--chip-bg)' : 'none'};color:var(--papaya);border:1px solid ${s.inboxFilter === 'flagged' ? 'var(--chip-line)' : 'var(--line2)'};border-radius:999px;padding:5px 11px">Flagged ${flaggedCount}</button>
           </div>
           <div class="scroll" style="display:flex;flex-direction:column;gap:8px;overflow-y:auto;padding-right:2px">
-            ${items.map(q => {
+            ${items.length ? items.map(q => {
               const on = sel && q.id === sel.id;
               return `<button data-action="selectInbox" data-arg="${arg({ id: q.id })}"
                 style="text-align:left;background:${on ? 'var(--chip-bg)' : 'var(--card)'};border:1px solid ${on ? 'var(--chip-line)' : 'var(--line)'};border-radius:12px;padding:12px 14px;color:var(--txt)">
@@ -40,8 +51,8 @@
                 <div style="font-size:11.5px;color:var(--sub2);margin-top:4px;line-height:1.45">${esc(q.text)}</div>
                 <div style="font-size:10px;color:var(--dim);margin-top:5px">${esc(q.ago)} · ${q.status === 'sent' ? 'sent ✓' : q.flagged ? 'needs your call' : 'draft ready'}</div>
               </button>`;
-            }).join('')}
-            ${s.inboxExtra ? `<div style="text-align:center;font-size:11px;color:var(--dim);padding:8px 0">+ ${s.inboxExtra} more in the queue</div>` : ''}
+            }).join('') : `<div style="text-align:center;font-size:11.5px;color:var(--dim);padding:22px 8px">No questions match.</div>`}
+            ${!query && s.inboxExtra ? `<div style="text-align:center;font-size:11px;color:var(--dim);padding:8px 0">+ ${s.inboxExtra} more in the queue</div>` : ''}
           </div>
         </div>`;
 
@@ -107,5 +118,14 @@
 
       return `<div style="display:flex;flex:1;min-height:0;gap:0;margin-right:-6px">${list}${detail}</div>`;
     },
+  };
+
+  // ---- module-local actions ----
+  // live filter of the inbox list by question text or sender name
+  window.Actions.inbSearch = function (value) {
+    Store.set(s => { s.inboxSearch = value; });
+  };
+  window.Actions.inbClearSearch = function () {
+    Store.set(s => { s.inboxSearch = ''; });
   };
 })();

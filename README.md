@@ -29,9 +29,16 @@ python3 -m http.server 8000
 
 ## Tech
 
-Plain HTML/CSS/JavaScript — no framework, no dependencies. Voice playback uses the browser's
-on-device speech synthesis as a stand-in for the production WellSaid Studio voice. State is
-kept in a small localStorage-backed store; "Reset demo" restores the seed.
+Plain HTML/CSS/JavaScript — no framework, no dependencies.
+
+- **Voice**: all seeded content (drops, answers, drafts, lesson intros) plays real
+  **WellSaid Studio** audio, pre-rendered with the WellSaid API (voice: Vanessa N. ·
+  Conversational) and shipped in `assets/vo/`. Live-typed questions fall back to the
+  browser's on-device speech synthesis.
+- **Real browser APIs**: MediaRecorder (re-record voice source lines), File API + canvas
+  (upload clips to the Studio library), Web Share / Clipboard (share replies), Notifications
+  (voice-reply alerts), Blob downloads (audience CSV export), and shipped PDF drill sheets.
+- **State**: a small localStorage-backed store; "Reset demo" restores the seed.
 
 ## Note
 

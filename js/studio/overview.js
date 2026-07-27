@@ -26,7 +26,7 @@
             <div style="font-size:23px;font-weight:800">Good morning, Angela</div>
             <div style="font-size:12.5px;color:var(--dim2);margin-top:2px">Wednesday, July 22 · ${waitingCount} questions waiting · next drop scheduled Friday 7:00 AM</div>
           </div>
-          <button class="btn btn-mint" data-action="nav" data-arg="${arg('#/studio/content')}">Record a drop</button>
+          <button class="btn btn-mint" data-action="ovRecordDrop">Record a drop</button>
         </div>
 
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:22px">
@@ -89,5 +89,11 @@
   window.Actions.reviewInbox = function (a) {
     Store.set(s => { s.inboxSelected = a.id; });
     location.hash = '#/studio/inbox';
+  };
+
+  // Record a drop → open Content with the composer already expanded (title auto-kept via data-keep)
+  window.Actions.ovRecordDrop = function () {
+    Store.set(s => { s.composerOpen = true; });
+    location.hash = '#/studio/content';
   };
 })();

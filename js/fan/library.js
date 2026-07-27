@@ -10,9 +10,9 @@
     <path d="M2 10.5V12h10v-1.5" stroke="var(--dim2)" stroke-width="1.6" fill="none"/></svg>`;
 
   const SHEETS = [
-    'Gap control drill sheet',
-    'Small-rink defending',
-    'Tryout prep checklist',
+    { name: 'Gap control drill sheet', file: 'assets/sheets/gap-control-drill-sheet.pdf' },
+    { name: 'Small-rink defending', file: 'assets/sheets/small-rink-defending.pdf' },
+    { name: 'Tryout prep checklist', file: 'assets/sheets/tryout-prep-checklist.pdf' },
   ];
 
   function savedCard(m) {
@@ -105,17 +105,37 @@
           <div style="display:flex;flex-direction:column;gap:10px;padding-bottom:10px">
             <div style="font-size:13px;font-weight:800;color:#B9C0BA">Drill sheets</div>
             <div class="card2" style="border-radius:14px;padding:2px 14px">
-              ${SHEETS.map((t, i) => `
-                <div style="display:flex;align-items:center;gap:12px;padding:13px 0;${i < SHEETS.length - 1 ? 'border-bottom:1px solid #1D221E' : ''}">
-                  <div style="flex:1;min-width:0;font-size:13.5px;font-weight:700">${esc(t)}</div>
-                  <span style="font-size:9.5px;font-weight:800;letter-spacing:0.08em;color:var(--sub);border:1px solid var(--line2);border-radius:999px;padding:2px 7px;flex-shrink:0">PDF</span>
+              ${SHEETS.map((sh, i) => {
+                const got = !!(s.sheetsGot && s.sheetsGot[sh.name]);
+                return `
+                <a href="${esc(sh.file)}" download data-action="libSheetGot" data-arg="${arg({ name: sh.name })}"
+                  style="display:flex;align-items:center;gap:12px;padding:13px 0;text-decoration:none;color:var(--txt);${i < SHEETS.length - 1 ? 'border-bottom:1px solid #1D221E' : ''}">
+                  <div style="flex:1;min-width:0;font-size:13.5px;font-weight:700">${esc(sh.name)}</div>
+                  ${got
+                    ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:9.5px;font-weight:800;letter-spacing:0.08em;color:var(--mint);border:1px solid var(--chip-line);border-radius:999px;padding:2px 8px;flex-shrink:0">${UI.icon.check('var(--mint)', 10)}PDF</span>`
+                    : `<span style="font-size:9.5px;font-weight:800;letter-spacing:0.08em;color:var(--sub);border:1px solid var(--line2);border-radius:999px;padding:2px 7px;flex-shrink:0">PDF</span>`}
                   ${dlIcon}
-                </div>`).join('')}
+                </a>`;
+              }).join('')}
             </div>
           </div>
 
         </div>
       </div>`;
     },
+  };
+
+  /* module actions */
+
+  // Drill-sheet row click: the <a download> starts the native PDF download; we flash a toast and
+  // mark the sheet as downloaded so the row keeps a mint check. Defer the state write (which
+  // re-renders and would detach the anchor) to the next tick so the browser's download fires first.
+  window.Actions.libSheetGot = function (a) {
+    const name = a && a.name;
+    if (!name) return;
+    App.toast('Downloaded ✓');
+    setTimeout(() => {
+      Store.set(s => { s.sheetsGot = s.sheetsGot || {}; s.sheetsGot[name] = true; });
+    }, 0);
   };
 })();

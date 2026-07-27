@@ -21,6 +21,13 @@
     </div>`;
   }
 
+  // shared source-of-truth arrays — render + CSV export read the same data
+  const STATS = [
+    ['1,024', 'NEW MEMBERS', '+18% this month', true],
+    ['2.1%', 'MONTHLY CHURN', '−0.4pt vs June', true],
+    ['4,890', 'DAILY ACTIVE', '39% of members', false],
+    ['38%', 'INVITE CONVERSION', 'code → member', false],
+  ];
   const TIERS = [
     ['Rookie', '6,120', 49, null, null],
     ['All-Access', '5,480', 44, null, null],
@@ -41,14 +48,11 @@
       return `
         <div style="display:flex;align-items:center;justify-content:space-between">
           <div style="font-size:23px;font-weight:800">Audience</div>
-          <button class="btn btn-ghost" style="padding:10px 16px" data-action="toast" data-arg="${UI.arg({ msg: 'Export isn’t wired in this concept demo.' })}">Export CSV</button>
+          <button class="btn btn-ghost" style="padding:10px 16px" data-action="audExport">Export CSV</button>
         </div>
 
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:22px">
-          ${stat('1,024', 'NEW MEMBERS', '+18% this month', true)}
-          ${stat('2.1%', 'MONTHLY CHURN', '−0.4pt vs June', true)}
-          ${stat('4,890', 'DAILY ACTIVE', '39% of members', false)}
-          ${stat('38%', 'INVITE CONVERSION', 'code → member', false)}
+          ${STATS.map(t => stat(t[0], t[1], t[2], t[3])).join('')}
         </div>
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:22px">
@@ -82,5 +86,44 @@
             </div>`).join('')}
         </div>`;
     },
+  };
+
+  // Export CSV — build a real file from the same on-screen arrays and download it
+  window.Actions.audExport = function () {
+    const cell = v => {
+      v = String(v == null ? '' : v);
+      return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+    };
+    const row = cells => cells.map(cell).join(',');
+    const lines = [];
+    lines.push('# Strive — Audience export · 2026-07 · all figures illustrative');
+    lines.push('');
+    lines.push('Summary');
+    lines.push(row(['Metric', 'Value', 'Change']));
+    STATS.forEach(t => lines.push(row([t[1], t[0], t[2]])));
+    lines.push('');
+    lines.push('Membership by tier');
+    lines.push(row(['Tier', 'Members', 'Share', 'Note']));
+    TIERS.forEach(t => lines.push(row([t[0], t[1], t[2] + '%', t[4] || ''])));
+    lines.push('');
+    lines.push('Where members train');
+    lines.push(row(['Region', 'Share']));
+    GEO.forEach(g => lines.push(row([g[0], g[1] + '%'])));
+    lines.push('');
+    lines.push('Newest members');
+    lines.push(row(['Name', 'Tier', 'Joined', 'Source']));
+    NEW.forEach(m => lines.push(row([m[1], m[2], m[3], 'via ANGELA code'])));
+
+    const csv = lines.join('\r\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'strive-audience-2026-07.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    Actions.toast({ msg: 'Audience export downloaded ✓' });
   };
 })();

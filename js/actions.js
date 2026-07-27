@@ -207,6 +207,15 @@
           st.chat.push({ kind: 'voice', id: cid, text: qq.draft, q: qq.text, when: 'Just now' });
           st.pendingAsks = st.pendingAsks.filter(p => p !== qq.id);
           st.fan.unread += 1;
+          // real browser notification if the fan enabled voice-reply alerts (You → Notifications)
+          if (st.fan.settings && st.fan.settings.replyAlerts &&
+              typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+            try {
+              new Notification('STRIVE — Angela answered you', {
+                body: '"' + qq.text.slice(0, 60) + (qq.text.length > 60 ? '…' : '') + '" — tap the Ask tab to hear it.',
+              });
+            } catch (e) {}
+          }
         }
       });
       log(`Approved reply to ${q.from} — sent in your voice`);

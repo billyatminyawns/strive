@@ -1,4 +1,4 @@
-/* Fan · Discover — featured athlete + trending follows (mockup 08) */
+/* Fan · Discover — featured athlete + trending follows + live search (mockup 08) */
 (function () {
   'use strict';
   const { esc, arg, mono, icon } = UI;
@@ -12,23 +12,50 @@
     { sport: 'Track', count: 14 },
   ];
 
+  // Angela is a 4th searchable row — she navigates to her profile instead of Follow.
+  const ANGELA = { id: 'angela', name: 'Angela Ruggiero', sport: 'Hockey', mono: 'AR', color: '#9BB4C7', line: 'Defense, Decoded — new season', nav: true };
+
+  // restore the scroll position after a filter re-render (browse tiles live at the bottom)
+  let savedScroll = 0, restoreScroll = false;
+  function stash(el) {
+    const sc = el && el.closest('.p-scroll');
+    if (sc) { savedScroll = sc.scrollTop; restoreScroll = true; }
+  }
+
   Screens['fan/discover'] = {
     tab: 'discover',
     render(s) {
+      const q = (s.discoverQuery || '').trim().toLowerCase();
+      const sport = s.discoverSport || 'All';
+
+      const rows = [ANGELA].concat(Data.ATHLETES);
+      const matchRow = a =>
+        (sport === 'All' || a.sport === sport) &&
+        (!q || (a.name + ' ' + a.sport + ' ' + a.line).toLowerCase().includes(q));
+      const shown = rows.filter(matchRow);
+
+      // browse tiles stay as sport shortcuts — the query narrows them, the active sport just highlights
+      const browseShown = BROWSE.filter(b => !q || b.sport.toLowerCase().includes(q));
+
       return `<div class="p-scroll" style="padding:70px 18px 8px">
         <div style="display:flex;flex-direction:column;gap:13px">
 
           <div style="font-size:24px;font-weight:800">Discover</div>
 
-          <div style="display:flex;align-items:center;gap:9px;background:var(--card2);border:1px solid var(--line2);border-radius:999px;padding:11px 15px">
-            ${icon.search()}
-            <span style="font-size:13px;color:var(--dim)">Search athletes, sports, skills…</span>
+          <div style="position:relative">
+            <span style="position:absolute;left:16px;top:50%;transform:translateY(-50%);display:flex;pointer-events:none">${icon.search()}</span>
+            <input class="field-dark" style="width:100%;padding-left:40px" placeholder="Search athletes, sports, skills…"
+              data-keep="discover-search" data-input-action="dscSearch" value="${esc(s.discoverQuery || '')}">
           </div>
 
-          <div style="display:flex;gap:6px">
-            ${SPORTS.map((sp, i) => i === 0
-              ? `<span style="font-size:11.5px;font-weight:800;color:var(--ink);background:var(--mint);border-radius:999px;padding:6px 12px">${esc(sp)}</span>`
-              : `<span style="font-size:11.5px;font-weight:700;color:var(--sub);border:1px solid var(--line2);border-radius:999px;padding:6px 12px">${esc(sp)}</span>`).join('')}
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            ${SPORTS.map(sp => {
+              const on = sport === sp;
+              return `<button data-action="dscSport" data-arg="${arg({ sport: sp })}"
+                style="font-size:11.5px;font-weight:${on ? 800 : 700};border-radius:999px;padding:6px 12px;${on
+                  ? 'color:var(--ink);background:var(--mint);border:none'
+                  : 'color:var(--sub);background:none;border:1px solid var(--line2)'}">${esc(sp)}</button>`;
+            }).join('')}
           </div>
 
           <button style="position:relative;height:172px;border-radius:20px;overflow:hidden;flex-shrink:0;width:100%;background:none;border:none;padding:0;text-align:left;color:var(--txt);display:block"
@@ -47,37 +74,66 @@
 
           <div style="display:flex;flex-direction:column;gap:8px">
             <div style="font-size:13px;font-weight:800;color:#B9C0BA">Trending now</div>
-            ${Data.ATHLETES.map(a => `
+            ${shown.length ? shown.map(a => `
               <div style="display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:9px 12px">
                 ${mono(a.mono, 34, a.color, 12)}
                 <div style="flex:1;min-width:0">
                   <div style="font-size:13px;font-weight:700">${esc(a.name)} · ${esc(a.sport)}</div>
                   <div style="font-size:11px;color:var(--dim2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(a.line)}</div>
                 </div>
-                ${s.fan.follows[a.id]
+                ${a.nav
                   ? `<button style="background:none;color:var(--mint);border:1px solid var(--chip-line);border-radius:999px;padding:7px 12px;font-size:11.5px;font-weight:800;flex-shrink:0"
-                      data-action="toggleFollow" data-arg="${arg({ id: a.id })}">Following ✓</button>`
-                  : `<button style="background:var(--mint);color:var(--ink);border:none;border-radius:999px;padding:7px 14px;font-size:11.5px;font-weight:800;flex-shrink:0"
-                      data-action="toggleFollow" data-arg="${arg({ id: a.id })}">Follow</button>`}
-              </div>`).join('')}
+                      data-action="nav" data-arg="${arg('#/fan/profile')}">View</button>`
+                  : (s.fan.follows[a.id]
+                    ? `<button style="background:none;color:var(--mint);border:1px solid var(--chip-line);border-radius:999px;padding:7px 12px;font-size:11.5px;font-weight:800;flex-shrink:0"
+                        data-action="toggleFollow" data-arg="${arg({ id: a.id })}">Following ✓</button>`
+                    : `<button style="background:var(--mint);color:var(--ink);border:none;border-radius:999px;padding:7px 14px;font-size:11.5px;font-weight:800;flex-shrink:0"
+                        data-action="toggleFollow" data-arg="${arg({ id: a.id })}">Follow</button>`)}
+              </div>`).join('')
+            : `<div style="background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 14px;text-align:center">
+                <div style="font-size:12.5px;color:var(--dim2)">No athletes match — try a sport like Tennis.</div>
+              </div>`}
           </div>
 
           <div style="display:flex;flex-direction:column;gap:8px;padding-bottom:10px">
             <div style="display:flex;justify-content:space-between;align-items:baseline">
               <div style="font-size:13px;font-weight:800;color:#B9C0BA">Browse by sport</div>
-              <span style="font-size:11px;font-weight:700;color:var(--mint)">All sports</span>
+              <button data-action="dscReset" style="background:none;border:none;padding:0;font-size:11px;font-weight:700;color:var(--mint)">All sports</button>
             </div>
-            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
-              ${BROWSE.map(b => `
-                <div style="background:var(--card);border:1px solid var(--line);border-radius:12px;padding:11px 12px">
-                  <div style="font-size:13px;font-weight:800">${esc(b.sport)}</div>
+            ${browseShown.length ? `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+              ${browseShown.map(b => {
+                const on = sport === b.sport;
+                return `<button data-action="dscSport" data-arg="${arg({ sport: b.sport })}"
+                  style="text-align:left;background:var(--card);border:1px solid ${on ? 'var(--chip-line)' : 'var(--line)'};border-radius:12px;padding:11px 12px;color:var(--txt)">
+                  <div style="font-size:13px;font-weight:800;${on ? 'color:var(--mint)' : ''}">${esc(b.sport)}</div>
                   <div style="font-size:10.5px;color:var(--dim2);margin-top:2px">${b.count} athletes</div>
-                </div>`).join('')}
-            </div>
+                </button>`;
+              }).join('')}
+            </div>` : `<div style="font-size:11.5px;color:var(--dim2)">No sports match — tap “All sports” to reset.</div>`}
           </div>
 
         </div>
       </div>`;
     },
+    after() {
+      if (!restoreScroll) return;
+      restoreScroll = false;
+      const sc = document.querySelector('.p-scroll');
+      if (sc) sc.scrollTop = savedScroll;
+    },
+  };
+
+  /* ---------- module-local actions ---------- */
+  window.Actions.dscSearch = function (value, el) {
+    stash(el);
+    Store.set(s => { s.discoverQuery = value; });
+  };
+  window.Actions.dscSport = function (a, el) {
+    stash(el);
+    Store.set(s => { s.discoverSport = (a && a.sport) || 'All'; });
+  };
+  window.Actions.dscReset = function (a, el) {
+    stash(el);
+    Store.set(s => { s.discoverQuery = ''; s.discoverSport = 'All'; });
   };
 })();

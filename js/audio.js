@@ -1,13 +1,19 @@
-/* STRIVE — voice playback. speechSynthesis stands in for the WellSaid Studio voice in this demo.
-   One thing plays at a time. Progress is timer-driven against an estimated duration so the UI
-   stays smooth even when synthesis is unavailable (then playback is silent but visible). */
+/* STRIVE — voice playback.
+   Two engines behind one Player API:
+   1. Real WellSaid Studio audio (assets/vo/*, looked up by exact text via window.VO) — real
+      duration, real pause/resume, real ±15s seeking.
+   2. On-device speechSynthesis fallback for live-typed content the demo can't pre-render.
+   One thing plays at a time. UI hooks: [data-wave-for], [data-playbtn-for], [data-prog-for],
+   [data-time-for], [data-dur-for]. */
 (function () {
   'use strict';
 
   const P = {
-    id: null, playing: false, t: 0, dur: 0, text: '',
-    _utter: null, _timer: null, _onEnd: null,
+    id: null, playing: false, t: 0, dur: 0, text: '', engine: null, // 'audio' | 'tts'
+    _utter: null, _timer: null, _onEnd: null, _audio: null,
   };
+
+  /* ---------- shared ---------- */
 
   function pickVoice() {
     const voices = window.speechSynthesis ? speechSynthesis.getVoices() : [];
@@ -21,7 +27,7 @@
     return en.find(v => /female/i.test(v.name)) || en[0] || voices[0];
   }
   if (window.speechSynthesis) {
-    speechSynthesis.onvoiceschanged = () => {}; // warm the voice list
+    speechSynthesis.onvoiceschanged = () => {};
     speechSynthesis.getVoices();
   }
 
@@ -33,8 +39,8 @@
   function delivery() {
     const d = (window.Store && Store.get().delivery) || { warmth: 70, energy: 55, pace: 45 };
     return {
-      rate: 0.82 + (d.pace / 100) * 0.45,       // 45 → ~1.02
-      pitch: 0.92 + (d.warmth / 100) * 0.22,     // 70 → ~1.07
+      rate: 0.82 + (d.pace / 100) * 0.45,
+      pitch: 0.92 + (d.warmth / 100) * 0.22,
       volume: 0.75 + (d.energy / 100) * 0.25,
     };
   }
@@ -42,7 +48,6 @@
   function clearTimer() { if (P._timer) { clearInterval(P._timer); P._timer = null; } }
 
   function updateDom() {
-    // patch live elements without a full re-render
     document.querySelectorAll('[data-wave-for]').forEach(el => {
       el.classList.toggle('on', P.playing && el.dataset.waveFor === P.id);
     });
@@ -61,10 +66,19 @@
     });
   }
 
+  function teardownAudio() {
+    if (P._audio) {
+      try { P._audio.pause(); } catch (e) {}
+      P._audio.onended = null; P._audio.ontimeupdate = null; P._audio.onloadedmetadata = null; P._audio.onerror = null;
+      P._audio = null;
+    }
+  }
+
   function finish() {
     clearTimer();
+    teardownAudio();
     const wasId = P.id;
-    P.playing = false; P.t = 0;
+    P.playing = false; P.t = 0; P.engine = null;
     if (window.speechSynthesis) try { speechSynthesis.cancel(); } catch (e) {}
     const cb = P._onEnd; P._onEnd = null;
     updateDom();
@@ -72,11 +86,41 @@
     if (window.App) App.render();
   }
 
-  function start(text) {
+  /* ---------- engine: real audio file ---------- */
+
+  function startAudio(src, text) {
+    const a = new Audio(src);
+    P._audio = a; P.engine = 'audio';
+    P.dur = estimate(text, 1); // provisional until metadata arrives
+    P.t = 0; P.playing = true;
+    a.onloadedmetadata = () => { if (isFinite(a.duration) && a.duration > 0) { P.dur = a.duration; updateDom(); } };
+    a.ontimeupdate = () => { P.t = a.currentTime; updateDom(); };
+    a.onended = () => { if (P._audio === a) finish(); };
+    a.onerror = () => { // file missing/corrupt → fall back to TTS transparently
+      if (P._audio !== a) return;
+      teardownAudio();
+      startTts(text);
+    };
+    a.play().catch(() => { /* autoplay block → user will tap again */ });
+  }
+
+  /* ---------- engine: speechSynthesis ---------- */
+
+  function ttsTick() {
+    clearTimer();
+    P._timer = setInterval(() => {
+      if (!P.playing) return;
+      P.t += 0.2;
+      if (P.t >= P.dur + 1.5) { finish(); return; }
+      updateDom();
+    }, 200);
+  }
+
+  function startTts(text) {
     const d = delivery();
+    P.engine = 'tts';
     P.dur = estimate(text, d.rate);
     P.t = 0; P.playing = true;
-
     if (window.speechSynthesis) {
       try {
         speechSynthesis.cancel();
@@ -87,57 +131,64 @@
         u.onend = () => { if (P.playing && P._utter === u) finish(); };
         P._utter = u;
         speechSynthesis.speak(u);
-      } catch (e) { /* silent playback */ }
+      } catch (e) { /* silent visual playback */ }
     }
-    clearTimer();
-    P._timer = setInterval(() => {
-      if (!P.playing) return;
-      P.t += 0.2;
-      if (P.t >= P.dur + 1.5) { finish(); return; }  // grace if onend never fires
-      updateDom();
-    }, 200);
+    ttsTick();
   }
+
+  /* ---------- public API ---------- */
 
   window.Player = {
     get state() { return P; },
     isPlaying(id) { return P.playing && P.id === id; },
     estimate,
+    isReal(text) { return !!(window.VO && VO.srcFor(text)); },
+
     /* toggle({id, text, onEnd}) — play, pause, or resume */
     toggle(p) {
-      if (P.id === p.id && P.playing) {           // pause
+      if (P.id === p.id && P.playing) {                 // pause
         P.playing = false;
-        if (window.speechSynthesis) try { speechSynthesis.pause(); } catch (e) {}
-        updateDom(); if (window.App) App.render();
-        return;
-      }
-      if (P.id === p.id && !P.playing && P.t > 0) { // resume
-        P.playing = true;
-        if (window.speechSynthesis) try { speechSynthesis.resume(); } catch (e) {}
+        if (P.engine === 'audio' && P._audio) { try { P._audio.pause(); } catch (e) {} }
+        else if (window.speechSynthesis) try { speechSynthesis.pause(); } catch (e) {}
         clearTimer();
-        P._timer = setInterval(() => {
-          if (!P.playing) return;
-          P.t += 0.2;
-          if (P.t >= P.dur + 1.5) { finish(); return; }
-          updateDom();
-        }, 200);
         updateDom(); if (window.App) App.render();
         return;
       }
-      // new playable
+      if (P.id === p.id && !P.playing && P.t > 0) {     // resume
+        P.playing = true;
+        if (P.engine === 'audio' && P._audio) { P._audio.play().catch(() => {}); }
+        else {
+          if (window.speechSynthesis) try { speechSynthesis.resume(); } catch (e) {}
+          ttsTick();
+        }
+        updateDom(); if (window.App) App.render();
+        return;
+      }
+      // new playable — stop whatever is active, then choose engine by text
+      clearTimer(); teardownAudio();
+      if (window.speechSynthesis) try { speechSynthesis.cancel(); } catch (e) {}
       P.id = p.id; P.text = p.text; P._onEnd = p.onEnd || null;
-      start(p.text);
+      const src = window.VO && VO.srcFor(p.text);
+      if (src) startAudio(src, p.text); else startTts(p.text);
       if (window.App) App.render();
     },
+
     seek(delta) {
       if (!P.id) return;
-      P.t = Math.max(0, Math.min(P.dur, P.t + delta));
+      if (P.engine === 'audio' && P._audio) {
+        try {
+          P._audio.currentTime = Math.max(0, Math.min(P.dur || P._audio.duration || 0, P._audio.currentTime + delta));
+          P.t = P._audio.currentTime;
+        } catch (e) {}
+      } else {
+        P.t = Math.max(0, Math.min(P.dur, P.t + delta)); // TTS can't seek — visual only
+      }
       updateDom();
-      // speechSynthesis can't seek — visual seek only, which is fine for the demo
     },
+
     stop() { P.id = null; finish(); },
   };
 
-  // stop speech when leaving the page
   window.addEventListener('beforeunload', () => {
     if (window.speechSynthesis) try { speechSynthesis.cancel(); } catch (e) {}
   });

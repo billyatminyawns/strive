@@ -78,6 +78,22 @@
     if (el) Actions.askSubmit(el.value, el);
   };
 
+  // reply-player Share → real Web Share; falls back to clipboard + toast
+  window.Actions.askShare = function (a) {
+    const s = Store.get();
+    const m = s.chat.find(x => x.id === (a && a.id));
+    if (!m) return;
+    const shareText = '"' + (m.q || '') + '" — Angela Ruggiero answered me on STRIVE: "'
+      + String(m.text || '').slice(0, 120) + '…"';
+    const url = 'https://billyatminyawns.github.io/strive/';
+    if (navigator.share) {
+      navigator.share({ title: 'STRIVE', text: shareText, url }).catch(() => {});
+    } else {
+      if (navigator.clipboard) navigator.clipboard.writeText(shareText + ' ' + url).catch(() => {});
+      Actions.toast({ msg: 'Copied to clipboard — paste anywhere.' });
+    }
+  };
+
   /* Fan · Voice reply moment — full-screen player (mockup 04 + walkthrough VoiceScreen) */
   Screens['fan/reply'] = {
     tab: 'ask', noTabbar: true,
@@ -113,7 +129,7 @@
         <div style="display:flex;gap:8px;margin-top:auto;padding-top:20px">
           <button data-action="saveReply" data-arg="${arg({ id: m.id })}"
             style="background:none;border:1px solid ${saved ? 'var(--chip-line)' : '#2A2F2B'};color:${saved ? 'var(--mint)' : '#D7DDD8'};border-radius:999px;padding:9px 16px;font-size:12px;font-weight:700">${saved ? 'Saved ✓' : 'Save'}</button>
-          <button data-action="toast" data-arg="${arg({ msg: 'Sharing isn’t wired in this concept demo.' })}" style="background:none;border:1px solid #2A2F2B;color:#D7DDD8;border-radius:999px;padding:9px 16px;font-size:12px;font-weight:700">Share</button>
+          <button data-action="askShare" data-arg="${arg({ id: m.id })}" style="background:none;border:1px solid #2A2F2B;color:#D7DDD8;border-radius:999px;padding:9px 16px;font-size:12px;font-weight:700">Share</button>
           <button data-action="nav" data-arg="${arg('#/fan/ask')}"
             style="background:none;border:1px solid var(--chip-line);color:var(--mint);border-radius:999px;padding:9px 16px;font-size:12px;font-weight:700">Ask follow-up</button>
         </div>

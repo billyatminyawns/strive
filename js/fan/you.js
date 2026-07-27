@@ -14,10 +14,39 @@
     </div>`;
   }
 
-  function settingRow(label, last) {
-    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:13px 2px;${last ? '' : 'border-bottom:1px solid #1D221E'}">
+  // right-pointing caret that rotates to point down when its section is open
+  function chev(open) {
+    return `<svg width="12" height="12" viewBox="0 0 8 14" style="transform:rotate(${open ? '90deg' : '0deg'});transition:transform .18s;flex-shrink:0"><path d="M1.5 1L7 7 1.5 13" stroke="#5C635D" stroke-width="1.8" fill="none"/></svg>`;
+  }
+
+  // deterministic, plausible offline file size for a drop
+  function sizeFor(d) {
+    return Math.max(0.4, String(d.script || '').length / 340).toFixed(1) + ' MB';
+  }
+
+  // header of an expandable settings section (chevron rotates when open)
+  function secHeader(label, section, open, right) {
+    return `<div data-action="youSection" data-arg="${arg({ s: section })}"
+      style="display:flex;align-items:center;justify-content:space-between;padding:13px 2px;cursor:pointer">
       <span style="font-size:13.5px;font-weight:600;color:#D7DDD8">${esc(label)}</span>
-      ${chevron}
+      <span style="display:flex;align-items:center;gap:9px">${right || ''}${chev(open)}</span>
+    </div>`;
+  }
+
+  // static (non-expanding) tappable settings row with the plain right chevron
+  function tapRow(action, opts) {
+    opts = opts || {};
+    return `<div data-action="${esc(action)}" style="display:flex;align-items:center;justify-content:space-between;padding:13px 2px;cursor:pointer">
+      <span style="font-size:13.5px;font-weight:600;color:${opts.color || '#D7DDD8'}">${esc(opts.label)}</span>
+      ${opts.right != null ? opts.right : chevron}
+    </div>`;
+  }
+
+  // one toggle row inside the Notifications accordion
+  function notifToggleRow(label, on, k) {
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 2px">
+      <span style="font-size:12.5px;color:#AEB5AF">${esc(label)}</span>
+      ${UI.toggle(on, 'youToggleNotif', { k })}
     </div>`;
   }
 
@@ -27,6 +56,13 @@
       const dropsPlayed = Object.keys(s.fan.listenedDrops).filter(k => s.fan.listenedDrops[k]).length;
       const repliesSaved = s.fan.savedReplies.length;
       const lessonsDone = Object.values(s.lessonProgress).filter(v => v === 100).length;
+
+      const settings = (s.fan && s.fan.settings) || {};
+      const downloads = (s.fan && s.fan.downloads) || {};
+      const notifOpen = s.youOpen === 'notif';
+      const dlOpen = s.youOpen === 'downloads';
+      const signArmed = !!s.youSignoutArm;
+      const dlCount = Object.keys(downloads).filter(k => downloads[k]).length;
 
       return `<div class="p-scroll" style="padding:70px 18px 8px">
         <div style="display:flex;flex-direction:column;gap:16px">
@@ -76,11 +112,44 @@
             ${statTile(lessonsDone, 'Lessons done')}
           </div>
 
-          <div class="card" style="padding:4px 16px">
-            ${settingRow('Notifications')}
-            ${settingRow('Downloads')}
-            ${settingRow('Restore purchases')}
-            ${settingRow('Sign out', true)}
+          <div class="card" style="padding:0 16px">
+
+            <div style="border-bottom:1px solid #1D221E">
+              ${secHeader('Notifications', 'notif', notifOpen)}
+              ${notifOpen ? `<div style="padding:0 0 10px">
+                ${notifToggleRow('Daily drop reminder', !!settings.dropReminder, 'dropReminder')}
+                ${notifToggleRow('Voice reply alerts', !!settings.replyAlerts, 'replyAlerts')}
+              </div>` : ''}
+            </div>
+
+            <div style="border-bottom:1px solid #1D221E">
+              ${secHeader('Downloads', 'downloads', dlOpen, dlCount ? `<span style="font-size:11px;color:var(--dim2)">${dlCount} offline</span>` : '')}
+              ${dlOpen ? `<div style="padding:2px 0 12px;display:flex;flex-direction:column;gap:9px">
+                ${s.drops.map(d => {
+                  const got = !!downloads[d.id];
+                  return `<div style="display:flex;align-items:center;gap:10px">
+                    <div style="flex:1;min-width:0">
+                      <div style="font-size:12.5px;font-weight:600;color:#D7DDD8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.title)}</div>
+                      <div style="font-size:10.5px;color:var(--dim2);margin-top:1px">${esc(d.when)} · ${esc(sizeFor(d))}</div>
+                    </div>
+                    ${got
+                      ? `<div style="flex-shrink:0;font-size:11px;color:var(--mint);font-weight:700;white-space:nowrap">Downloaded ✓ · <button data-action="youDl" data-arg="${arg({ id: d.id, remove: true })}" style="font-size:11px;font-weight:700;color:var(--dim2);background:none;border:none;padding:0;cursor:pointer">Remove</button></div>`
+                      : `<button class="btn btn-ghost" style="padding:7px 13px;font-size:11.5px;flex-shrink:0" data-action="youDl" data-arg="${arg({ id: d.id })}">Download</button>`}
+                  </div>`;
+                }).join('')}
+              </div>` : ''}
+            </div>
+
+            <div style="border-bottom:1px solid #1D221E">
+              ${tapRow('youRestore', { label: 'Restore purchases' })}
+            </div>
+
+            <div>
+              ${tapRow('youSignout', signArmed
+                ? { label: 'Sign out — sure?', color: 'var(--papaya)', right: `<span style="font-size:11px;color:var(--papaya);font-weight:700">Tap again</span>` }
+                : { label: 'Sign out' })}
+            </div>
+
           </div>
 
           <div style="font-size:10px;color:var(--faint);text-align:center;padding:2px 0 10px">Strive concept demo · all content illustrative</div>
@@ -95,5 +164,79 @@
     try { navigator.clipboard.writeText('MARCUS3'); } catch (e) {}
     Store.set(s => { s.inviteCopied = true; });
     setTimeout(() => Store.set(s => { s.inviteCopied = false; }), 1500);
+  };
+
+  // Settings: open/close an accordion section (only one open at a time)
+  window.Actions.youSection = function (a) {
+    const sec = a && a.s;
+    Store.set(s => { s.youOpen = s.youOpen === sec ? null : sec; });
+  };
+
+  // Settings: notification toggles. Turning "Voice reply alerts" ON asks the OS
+  // for permission; denied → stay off + toast, granted → fire a sample notification.
+  window.Actions.youToggleNotif = function (a) {
+    const k = a && a.k;
+    if (!k) return;
+    const st = Store.get();
+    const cur = (st.fan && st.fan.settings) || {};
+    const turningOn = !cur[k];
+
+    if (k === 'replyAlerts' && turningOn) {
+      if (typeof Notification === 'undefined') { App.toast('Notifications aren’t supported here'); return; }
+      const grant = () => {
+        Store.set(s => { s.fan.settings = s.fan.settings || {}; s.fan.settings.replyAlerts = true; });
+        try { new Notification('STRIVE', { body: 'Voice reply alerts are on — you\'ll hear when Angela answers.' }); } catch (e) {}
+      };
+      const deny = () => {
+        App.toast('Allow notifications in your browser to get alerts');
+        Store.set(s => { s.fan.settings = s.fan.settings || {}; s.fan.settings.replyAlerts = false; });
+      };
+      try {
+        const r = Notification.requestPermission();
+        if (r && typeof r.then === 'function') r.then(p => (p === 'granted' ? grant() : deny())).catch(deny);
+        else ((typeof r === 'string' ? r : Notification.permission) === 'granted' ? grant() : deny());
+      } catch (e) { deny(); }
+      return;
+    }
+
+    Store.set(s => { s.fan.settings = s.fan.settings || {}; s.fan.settings[k] = !s.fan.settings[k]; });
+  };
+
+  // Settings: mark a drop available offline (instant) or remove it
+  window.Actions.youDl = function (a) {
+    const id = a && a.id;
+    if (!id) return;
+    Store.set(s => {
+      s.fan.downloads = s.fan.downloads || {};
+      if (a.remove) delete s.fan.downloads[id];
+      else s.fan.downloads[id] = true;
+    });
+  };
+
+  // Settings: fake App Store restore — two sequential toasts
+  window.Actions.youRestore = function () {
+    App.toast('Checking App Store…');
+    setTimeout(() => {
+      if (!window.Store || !Store.get()) return;   // demo may have been reset away
+      App.toast('All-Access restored ✓');
+    }, 1200);
+  };
+
+  // Settings: two-step sign out → clear session and drop back to the invite gate
+  window.Actions.youSignout = function () {
+    if (!Store.get().youSignoutArm) {
+      Store.set(s => { s.youSignoutArm = true; });
+      setTimeout(() => {
+        if (window.Store && Store.get() && Store.get().youSignoutArm) Store.set(s => { s.youSignoutArm = false; });
+      }, 3000);
+      return;
+    }
+    if (window.Player && Player.state.playing) Player.stop();
+    Store.set(s => {
+      s.unlocked = false;
+      s.youSignoutArm = false;
+      if (s.fan) s.fan.unread = 0;
+    });
+    location.hash = '#/fan/home';
   };
 })();

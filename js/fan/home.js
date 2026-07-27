@@ -14,6 +14,7 @@
       const prog = s.lessonProgress[lesson.id] || 0;
       const minLeft = Math.max(1, Math.round(lesson.min * (1 - prog / 100)));
       const playingDrop = Player.isPlaying(drop.id);
+      const editing = !!s.editingInterests;
 
       return `<div class="p-scroll" style="padding:70px 18px 8px">
         <div style="display:flex;flex-direction:column;gap:16px">
@@ -62,12 +63,16 @@
           <div style="display:flex;flex-direction:column;gap:10px">
             <div style="display:flex;justify-content:space-between;align-items:baseline">
               <div style="font-size:13px;font-weight:800;color:#B9C0BA">Your interests</div>
-              <span style="font-size:11px;font-weight:700;color:var(--mint)">Edit</span>
+              <button data-action="homeEditInterests" style="background:none;border:none;padding:0;font-size:11px;font-weight:700;color:var(--mint)">${editing ? 'Done' : 'Edit'}</button>
             </div>
             <div style="display:flex;flex-wrap:wrap;gap:7px">
-              ${s.fan.interests.map(t => `<button data-action="toggleInterest" data-arg="${arg({ tag: t })}"
-                style="font-size:12px;font-weight:700;color:#D7DDD8;border:1px solid var(--chip-line);background:var(--chip-bg);border-radius:999px;padding:7px 13px">${esc(t)}</button>`).join('')}
-              <button data-action="surpriseMe" style="font-size:12px;font-weight:800;color:var(--ink);background:var(--mint);border:none;border-radius:999px;padding:7px 13px">Surprise me</button>
+              ${s.fan.interests.map(t => editing
+                ? `<button data-action="toggleInterest" data-arg="${arg({ tag: t })}"
+                    style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#D7DDD8;border:1px solid var(--chip-line);background:var(--chip-bg);border-radius:999px;padding:7px 13px">${esc(t)}<span style="color:var(--dim2);font-weight:800">✕</span></button>`
+                : `<span style="font-size:12px;font-weight:700;color:#D7DDD8;border:1px solid var(--chip-line);background:var(--chip-bg);border-radius:999px;padding:7px 13px">${esc(t)}</span>`).join('')}
+              ${editing
+                ? `<button data-action="homeAddInterest" style="font-size:12px;font-weight:800;color:var(--mint);background:none;border:1px dashed var(--chip-line);border-radius:999px;padding:7px 13px">+ Add</button>`
+                : `<button data-action="surpriseMe" style="font-size:12px;font-weight:800;color:var(--ink);background:var(--mint);border:none;border-radius:999px;padding:7px 13px">Surprise me</button>`}
             </div>
           </div>
 
@@ -90,5 +95,19 @@
         </div>
       </div>`;
     },
+  };
+
+  // toggle the interests edit mode (chips become removable, "+ Add" appears)
+  window.Actions.homeEditInterests = function () {
+    Store.set(s => { s.editingInterests = !s.editingInterests; });
+  };
+
+  // "+ Add" chip: add the first suggestion not already present
+  window.Actions.homeAddInterest = function () {
+    const pool = ['Recovery', 'Film study', 'Off-ice strength', 'Team culture', 'Nagano stories'];
+    const s = Store.get();
+    const next = pool.find(p => !s.fan.interests.includes(p));
+    if (!next) { Actions.toast({ msg: 'That’s the whole suggestions pool — nice.' }); return; }
+    Store.set(st => { st.fan.interests.push(next); });
   };
 })();

@@ -170,7 +170,7 @@
             <button class="${r.view === 'studio' ? 'on' : ''}" data-action="nav" data-arg="${arg('#/studio/overview')}">Studio</button>
           </div>
           <div class="spacer"></div>
-          <span class="note">Demo voice: on-device speech · WellSaid Studio voice in production</span>
+          <span class="note">Voice by WellSaid Studio · live-typed asks use on-device speech</span>
           <button class="reset" data-action="resetDemo">Reset demo</button>
         </div>
         ${inner}`;
