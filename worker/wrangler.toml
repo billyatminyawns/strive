@@ -1,0 +1,10 @@
+name = "strive-api"
+main = "src/index.js"
+compatibility_date = "2026-07-01"
+
+# Secrets (set via `npx wrangler secret put <NAME>`, never in this file):
+#   ANTHROPIC_API_KEY  — console.anthropic.com
+#   WELLSAID_API_KEY   — developer.wellsaidlabs.com (same key as the local connector)
+
+[vars]
+ALLOWED_ORIGINS = "https://billyatminyawns.github.io,http://localhost:8642"

@@ -134,6 +134,49 @@
     </div>`;
   }
 
+  /* ---------- live API settings modal ---------- */
+  function settingsModal(s) {
+    const api = window.Api;
+    const workerState = !api || !api.enabled ? ['off', 'NOT CONFIGURED']
+      : api.workerOk === null ? ['', 'CHECKING…']
+      : api.workerOk ? ['on', 'ONLINE'] : ['off', 'UNREACHABLE'];
+    const hasKey = !!(api && api.byokKey);
+    return `<div class="modal-back" data-action="settingsToggle">
+      <div class="modal" data-action="noop">
+        <h3>Live demo intelligence</h3>
+
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div class="row" style="justify-content:space-between">
+            <div>
+              <div style="font-size:13px;font-weight:700">Backend API <span style="color:var(--faint);font-weight:600">· Cloudflare Worker</span></div>
+              <div style="font-size:11.5px;color:var(--sub);margin-top:2px">Claude drafts new replies · WellSaid renders new voice lines. Keys stay server-side.</div>
+            </div>
+            <span class="status-chip ${workerState[0]}">${workerState[1]}</span>
+          </div>
+        </div>
+
+        <div style="border-top:1px solid var(--line);padding-top:14px;display:flex;flex-direction:column;gap:10px">
+          <div>
+            <div style="font-size:13px;font-weight:700">Backup: your own Anthropic key <span style="color:var(--faint);font-weight:600">· browser-only</span></div>
+            <div style="font-size:11.5px;color:var(--sub);margin-top:2px;line-height:1.5">Used for drafts when the backend can't. Stored only in <b>this browser's</b> localStorage and sent only to api.anthropic.com — use your own key on your own machine.</div>
+          </div>
+          <div class="row">
+            <input type="password" class="field-rect" style="flex:1;min-width:0" id="byok-input" data-keep="byok-input"
+              data-enter-action="byokSave" placeholder="${hasKey ? '•••••••••••• key saved' : 'sk-ant-…'}" autocomplete="off">
+            <button class="btn btn-mint" style="padding:10px 14px;flex-shrink:0" data-action="byokSave">Save</button>
+            ${hasKey ? `<button class="btn btn-ghost" style="padding:10px 12px;flex-shrink:0" data-action="byokClear">Clear</button>` : ''}
+          </div>
+          <div style="font-size:11px;color:var(--faint);line-height:1.5">Drafts use Claude Opus 4.8. Voice for brand-new lines still needs the backend; without it they play in on-device speech. Pre-recorded WellSaid audio always works.</div>
+        </div>
+
+        <div style="border-top:1px solid var(--line);padding-top:12px;display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:11px;color:var(--dim)">No live path? The demo falls back to canned drafts — nothing breaks.</span>
+          <button class="btn btn-ghost" style="padding:9px 16px" data-action="settingsToggle">Close</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
   /* ---------- render ---------- */
   const App = {
     render() {
@@ -170,10 +213,12 @@
             <button class="${r.view === 'studio' ? 'on' : ''}" data-action="nav" data-arg="${arg('#/studio/overview')}">Studio</button>
           </div>
           <div class="spacer"></div>
-          <span class="note">Voice by WellSaid Studio · live-typed asks use on-device speech</span>
+          <span class="note">Voice by WellSaid Studio · drafts by Claude</span>
+          <button class="reset" data-action="settingsToggle">Live API</button>
           <button class="reset" data-action="resetDemo">Reset demo</button>
         </div>
-        ${inner}`;
+        ${inner}
+        ${s.settingsOpen ? settingsModal(s) : ''}`;
 
       if (keep) {
         const el = rootEl.querySelector(`[data-keep="${keep.id}"]`);
@@ -217,6 +262,28 @@
   window.App = App;
 
   window.Actions.toast = function (a) { App.toast((a && a.msg) || 'Not wired in this demo'); };
+  window.Actions.noop = function (a, el, ev) { if (ev) ev.stopPropagation(); };
+
+  /* ---------- live API settings ---------- */
+  window.Actions.settingsToggle = function () {
+    Store.set(s => { s.settingsOpen = !s.settingsOpen; });
+    if (Store.get().settingsOpen && window.Api) Api.checkWorker();
+  };
+  window.Actions.byokSave = function (value, el) {
+    const input = el && el.tagName === 'INPUT' ? el : document.getElementById('byok-input');
+    const key = String((input && input.value) || value || '').trim();
+    if (!key) { App.toast('Paste an Anthropic API key first.'); return; }
+    if (!/^sk-ant-/.test(key)) { App.toast('That doesn’t look like an Anthropic key (sk-ant-…).'); return; }
+    Api.setByokKey(key);
+    if (input) input.value = '';
+    App.toast('Key saved to this browser — live drafts enabled ✓');
+    App.render();
+  };
+  window.Actions.byokClear = function () {
+    Api.setByokKey('');
+    App.toast('Key removed from this browser.');
+    App.render();
+  };
 
   /* ---------- events ---------- */
   document.addEventListener('click', e => {

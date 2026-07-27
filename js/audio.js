@@ -138,11 +138,17 @@
 
   /* ---------- public API ---------- */
 
+  // pre-rendered VO file, or a runtime WellSaid render stashed by js/api.js
+  function srcForText(text) {
+    if (!window.VO) return null;
+    return VO.srcFor(text) || (window.RuntimeVO && RuntimeVO[VO.key(text)]) || null;
+  }
+
   window.Player = {
     get state() { return P; },
     isPlaying(id) { return P.playing && P.id === id; },
     estimate,
-    isReal(text) { return !!(window.VO && VO.srcFor(text)); },
+    isReal(text) { return !!srcForText(text); },
 
     /* toggle({id, text, onEnd}) — play, pause, or resume */
     toggle(p) {
@@ -168,7 +174,7 @@
       clearTimer(); teardownAudio();
       if (window.speechSynthesis) try { speechSynthesis.cancel(); } catch (e) {}
       P.id = p.id; P.text = p.text; P._onEnd = p.onEnd || null;
-      const src = window.VO && VO.srcFor(p.text);
+      const src = srcForText(p.text);
       if (src) startAudio(src, p.text); else startTts(p.text);
       if (window.App) App.render();
     },

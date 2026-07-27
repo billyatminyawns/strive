@@ -122,19 +122,36 @@
         return;
       }
       // 3. new question → Studio inbox, Angela approves, fan gets the reply
+      const qid = uid('q');
+      const liveDraft = window.Api && Api.active;   // worker or browser-local key
       Store.set(st => {
         st.chat.push({ kind: 'q', text: q });
         st.chat.push({ kind: 'sys', text: 'Sent to Angela — new questions get her real voice, usually within a day. (In this demo: approve it in the Studio inbox.)' });
-        const id = uid('q');
         st.inbox.unshift({
-          id, from: st.fan.name + ' (you)', tier: st.fan.tier, avatar: st.fan.mono, color: st.fan.color,
+          id: qid, from: st.fan.name + ' (you)', tier: st.fan.tier, avatar: st.fan.mono, color: st.fan.color,
           text: q, ago: 'Just now', meta: 'That’s you', status: 'draft', similar: 0,
-          draft: Data.draftFor(q, st.inbox.length), fromFan: true,
+          draft: Data.draftFor(q, st.inbox.length), fromFan: true, drafting: liveDraft,
         });
-        st.inboxSelected = id;
-        st.pendingAsks.push(id);
+        st.inboxSelected = qid;
+        st.pendingAsks.push(qid);
       });
       log('New fan question arrived in the inbox');
+      // Claude drafts the real reply; the template above is the offline fallback
+      if (liveDraft) {
+        const gen3 = epoch;
+        Api.draft(q, S().guards).then(text => {
+          if (gen3 !== epoch) return;
+          Store.set(st => {
+            const item = st.inbox.find(x => x.id === qid);
+            if (!item) return;
+            item.drafting = false;
+            if (text && item.status === 'draft' && !item.draftEdited) {
+              item.draft = text;
+              item.aiDrafted = true;
+            }
+          });
+        });
+      }
     },
 
     saveReply(a) {
@@ -187,7 +204,7 @@
     setInboxFilter(a) { Store.set(s => { s.inboxFilter = a.f; }); },
     editDraft(value, el) {
       const id = el.dataset.qid;
-      Store.silent(s => { const q = s.inbox.find(q => q.id === id); if (q) q.draft = value; });
+      Store.silent(s => { const q = s.inbox.find(q => q.id === id); if (q) { q.draft = value; q.draftEdited = true; } });
     },
     toggleEditDraft(a) {
       Store.set(s => { const q = s.inbox.find(q => q.id === a.id); if (q) q.editing = !q.editing; });
@@ -219,6 +236,8 @@
         }
       });
       log(`Approved reply to ${q.from} — sent in your voice`);
+      // novel text: render it with WellSaid in the background so the fan hears her real voice
+      if (window.Api && Api.enabled && !Player.isReal(q.draft)) Api.ensureVoice(q.draft);
     },
     decline(a) {
       Store.set(st => {
@@ -256,8 +275,15 @@
     sampleText(value) { Store.silent(s => { s.sample.text = value; }); },
     genSample() {
       Store.set(s => { s.sample.ready = true; });
-      // auto-play the generated sample
-      setTimeout(() => Actions.togglePlay({ id: 'sample' }), 60);
+      const text = S().sample.text;
+      // novel line + live API → render with WellSaid first, then play; else play immediately
+      if (window.Api && Api.enabled && !Player.isReal(text)) {
+        Actions.toast({ msg: 'Rendering with WellSaid…' });
+        const gen = epoch;
+        Api.ensureVoice(text).then(() => { if (gen === epoch) Actions.togglePlay({ id: 'sample' }); });
+      } else {
+        setTimeout(() => Actions.togglePlay({ id: 'sample' }), 60);
+      }
     },
 
     /* ---------- studio: content ---------- */
@@ -277,6 +303,8 @@
           s.composerOpen = false;
         }
       });
+      // render the new drop's voice with WellSaid so the fan feed plays it for real
+      if (window.Api && Api.enabled && !Player.isReal(script)) Api.ensureVoice(script);
       log(slot === 'now' ? `Published drop "${title}"` : `Scheduled drop "${title}" (${slot})`);
     },
     toggleComposer() { Store.set(s => { s.composerOpen = !s.composerOpen; }); },

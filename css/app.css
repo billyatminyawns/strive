@@ -226,6 +226,19 @@ textarea.field-rect:focus, input.field-rect:focus { border-color: var(--chip-lin
 .k-label { letter-spacing: 0.14em; font-weight: 800; }
 .hide { display: none !important; }
 
+/* settings modal */
+.modal-back { position: fixed; inset: 0; z-index: 140; background: rgba(6, 8, 7, 0.78);
+  display: flex; align-items: center; justify-content: center; padding: 30px; }
+.modal { width: 460px; max-width: 94vw; max-height: 86vh; overflow-y: auto; background: #131614;
+  border: 1px solid var(--line2); border-radius: 18px; padding: 24px; display: flex;
+  flex-direction: column; gap: 16px; box-shadow: 0 30px 80px rgba(0,0,0,0.6); cursor: default; }
+.modal h3 { margin: 0; font-size: 17px; font-weight: 800; }
+.modal .row { display: flex; align-items: center; gap: 10px; }
+.status-chip { font-size: 10.5px; font-weight: 800; letter-spacing: 0.08em; border-radius: 999px;
+  padding: 4px 10px; border: 1px solid var(--line2); color: var(--sub); }
+.status-chip.on { color: var(--mint); border-color: var(--chip-line); }
+.status-chip.off { color: var(--papaya); }
+
 /* transient toast */
 #toast { position: fixed; left: 50%; bottom: 26px; transform: translate(-50%, 20px); z-index: 200;
   background: #1B1F1C; border: 1px solid var(--chip-line); color: var(--txt); font-size: 13px; font-weight: 600;

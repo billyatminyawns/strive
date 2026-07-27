@@ -78,14 +78,16 @@
 
           <div class="card" style="padding:18px;display:flex;flex-direction:column;gap:12px">
             <div style="display:flex;align-items:center;justify-content:space-between">
-              <span class="k-label" style="font-size:10.5px;color:var(--lav)">AI DRAFT · FROM YOUR PAST ANSWERS</span>
+              <span class="k-label" style="font-size:10.5px;color:var(--lav)">${sel.aiDrafted ? 'AI DRAFT · CLAUDE · FROM YOUR PAST ANSWERS' : 'AI DRAFT · FROM YOUR PAST ANSWERS'}</span>
               ${sel.status === 'sent'
                 ? `<span class="k-label" style="font-size:10.5px;color:var(--mint)">SENT ✓</span>`
-                : `<span class="k-label" style="font-size:10.5px;color:var(--papaya)">AWAITING APPROVAL</span>`}
+                : sel.drafting
+                  ? `<span class="k-label" style="font-size:10.5px;color:var(--lav);display:inline-flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:var(--lav);animation:livepulse 1.1s infinite"></span>CLAUDE IS DRAFTING…</span>`
+                  : `<span class="k-label" style="font-size:10.5px;color:var(--papaya)">AWAITING APPROVAL</span>`}
             </div>
             ${sel.editing
               ? `<textarea class="field-rect" rows="5" data-keep="draft-edit" data-input-action="editDraft" data-qid="${sel.id}">${esc(sel.draft)}</textarea>`
-              : `<div style="font-size:13.5px;color:#D7DDD8;line-height:1.65">${esc(sel.draft)}</div>`}
+              : `<div style="font-size:13.5px;color:#D7DDD8;line-height:1.65;${sel.drafting ? 'opacity:0.55' : ''}">${esc(sel.draft)}</div>`}
             <div style="display:flex;align-items:center;gap:12px;background:var(--screen);border:1px solid var(--line2);border-radius:12px;padding:10px 14px">
               ${playBtn({ id: draftId }, 32)}
               <div style="flex:1">${wave(draftId, 26, 20)}</div>

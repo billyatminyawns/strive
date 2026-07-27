@@ -39,6 +39,11 @@ Plain HTML/CSS/JavaScript — no framework, no dependencies.
   (upload clips to the Studio library), Web Share / Clipboard (share replies), Notifications
   (voice-reply alerts), Blob downloads (audience CSV export), and shipped PDF drill sheets.
 - **State**: a small localStorage-backed store; "Reset demo" restores the seed.
+- **Live intelligence** (optional, `worker/`): a Cloudflare Worker gives the demo a real brain —
+  Claude (Opus 4.8) drafts Angela's reply to brand-new questions, and WellSaid renders any
+  approved novel text so even live answers come back in her real voice. As a backup, the
+  **Live API** panel accepts a browser-local Anthropic key (BYOK) for drafts. With neither,
+  the app falls back to template drafts and on-device speech — nothing breaks.
 
 ## Note
 
