@@ -71,6 +71,25 @@
     }).join('')}</div>`;
   }
 
+  /* persistent now-playing bar (fan + athlete phone frames, above the tab bar) */
+  function miniPlayer(activeScreenKey) {
+    const P = window.Player && Player.state;
+    if (!P || !P.id || (!P.playing && P.t <= 0)) return '';
+    if (activeScreenKey === 'fan/reply') return '';   // full-screen player owns that view
+    const title = P.title || 'Now playing';
+    return `<div style="display:flex;align-items:center;gap:10px;background:#151915;border-top:1px solid var(--line2);padding:8px 14px;flex-shrink:0;position:relative;z-index:41">
+      ${UI.ava(Data.IMG.head, 30)}
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(title)}</div>
+        <div style="font-size:10px;color:var(--dim2)"><span data-time-for="${esc(P.id)}">${UI.fmt(P.t)}</span> / <span data-dur-for="${esc(P.id)}">${UI.fmt(P.dur)}</span> · Angela Ruggiero</div>
+      </div>
+      ${UI.wave(P.id, 8, 14, null, 3)}
+      ${UI.playBtn({ id: P.id }, 32)}
+      <button data-action="stopPlayback" aria-label="Close player"
+        style="width:26px;height:26px;border:none;background:none;color:var(--dim);font-size:14px;display:flex;align-items:center;justify-content:center">✕</button>
+    </div>`;
+  }
+
   function statusbar() {
     return `<div class="statusbar"><span class="time">9:41</span>
       <span class="icons">
@@ -166,7 +185,8 @@
           <span style="width:7px;height:7px;border-radius:50%;background:var(--mint)"></span>AI VOICE POWERED BY WELLSAID</span>
         <span style="font-size:12px;color:var(--dim)">All stats and content illustrative.</span>
       </div>
-      <div style="font-size:11px;color:#3E443F;margin-top:16px">Tip: ask a question in the fan app, then approve the reply in Studio — the loop is live.</div>
+      <div style="font-size:11px;color:#3E443F;margin-top:16px">Tip: ask a question in the fan app, then swipe to approve it in the pocket studio — the loop is live.</div>
+      ${window.__installPrompt ? `<button class="btn btn-mint-line fadeup" style="margin-top:18px" data-action="installApp">⤓ Install STRIVE as an app</button>` : ''}
     </div>`;
   }
 
@@ -231,11 +251,11 @@
         if (!screen) inner = `<div class="landing"><div style="color:var(--sub)">Screen not found: ${esc(r.key)}</div></div>`;
         else if (r.view === 'fan') {
           const body = screen.render(s, r.params);
-          const chrome = screen.noTabbar ? body : body + tabbar(screen.tab || '');
+          const chrome = screen.noTabbar ? body : body + miniPlayer(r.key) + tabbar(screen.tab || '');
           inner = phoneFrame(`<div class="p-body">${chrome}</div>`, screen);
         } else if (r.view === 'athlete') {
           const body = screen.render(s, r.params);
-          const chrome = screen.noTabbar ? body : body + athleteTabbar(screen.tab || '');
+          const chrome = screen.noTabbar ? body : body + miniPlayer(r.key) + athleteTabbar(screen.tab || '');
           inner = phoneFrame(`<div class="p-body">${chrome}</div>`, screen);
         } else {
           const sub = r.key.split('/')[1];
@@ -304,6 +324,13 @@
 
   window.Actions.toast = function (a) { App.toast((a && a.msg) || 'Not wired in this demo'); };
   window.Actions.noop = function (a, el, ev) { if (ev) ev.stopPropagation(); };
+  window.Actions.stopPlayback = function () { if (window.Player) Player.stop(); };
+  window.Actions.installApp = function () {
+    const p = window.__installPrompt;
+    if (!p) { App.toast('Use your browser menu → Install app / Add to Home Screen.'); return; }
+    p.prompt();
+    p.userChoice.then(() => { window.__installPrompt = null; App.render(); });
+  };
 
   /* ---------- live API settings ---------- */
   window.Actions.settingsToggle = function () {

@@ -9,6 +9,12 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,100..1000&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/app.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%230B0C0B'/><rect x='4' y='4' width='8' height='8' fill='%237CE2A5'/></svg>">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0B0C0B">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="STRIVE">
 </head>
 <body>
 <div class="glow"></div>
@@ -33,6 +39,8 @@
 <script src="js/fan/you.js"></script>
 <script src="js/fan/tiers.js"></script>
 <script src="js/fan/invite.js"></script>
+<script src="js/fan/live.js"></script>
+<script src="js/fan/notifs.js"></script>
 
 <!-- athlete pocket studio -->
 <script src="js/athlete/home.js"></script>
@@ -52,5 +60,18 @@
 
 <!-- shell last -->
 <script src="js/app.js"></script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('./sw.js').catch(function () {});
+  });
+}
+// captured for the "Install app" rows (fan You / athlete profile)
+window.addEventListener('beforeinstallprompt', function (e) {
+  e.preventDefault();
+  window.__installPrompt = e;
+  if (window.App) App.render();
+});
+</script>
 </body>
 </html>

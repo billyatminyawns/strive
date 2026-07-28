@@ -4,15 +4,15 @@
 
   const S = () => Store.get();
 
-  // playables registry: resolves an id to speakable text at click time
+  // playables registry: resolves an id to speakable text + display title at click time
   function textFor(id) {
     const s = S();
-    if (id.startsWith('drop-')) { const d = s.drops.find(d => d.id === id); return d && d.script; }
-    if (id.startsWith('sch-')) { const d = s.scheduled.find(x => x.id === id); return d && (d.title + '. ' + d.sub); }
-    if (id === 'sample') return s.sample.text;
-    if (id.startsWith('draft:')) { const q = s.inbox.find(q => q.id === id.slice(6)); return q && q.draft; }
+    if (id.startsWith('drop-')) { const d = s.drops.find(d => d.id === id); return d && { text: d.script, title: d.title }; }
+    if (id.startsWith('sch-')) { const d = s.scheduled.find(x => x.id === id); return d && { text: d.title + '. ' + d.sub, title: d.title }; }
+    if (id === 'sample') return { text: s.sample.text, title: 'Voice sample' };
+    if (id.startsWith('draft:')) { const q = s.inbox.find(q => q.id === id.slice(6)); return q && { text: q.draft, title: 'Reply to ' + q.from.split(' ')[0] }; }
     const msg = s.chat.find(m => m.id === id);
-    if (msg) return msg.text;
+    if (msg) return { text: msg.text, title: 'Voice reply from Angela' };
     return null;
   }
 
@@ -25,6 +25,13 @@
 
   let seq = 100;
   const uid = p => p + '-' + (++seq) + '-' + Math.random().toString(36).slice(2, 6);
+
+  // drop a card in the fan's notification center (st = state inside a Store.set)
+  function notify(st, text, sub, to) {
+    st.fan.notifs = st.fan.notifs || [];
+    st.fan.notifs.unshift({ id: uid('n'), text, sub, when: 'Just now', to: to || '#/fan/home', read: false });
+    st.fan.notifs = st.fan.notifs.slice(0, 20);
+  }
 
   // bumped on reset so deferred chat callbacks armed before a reset become no-ops
   let epoch = 0;
@@ -51,10 +58,10 @@
 
     /* ---------- playback ---------- */
     togglePlay(a) {
-      const text = textFor(a.id);
-      if (!text) return;
+      const p = textFor(a.id);
+      if (!p) return;
       Player.toggle({
-        id: a.id, text,
+        id: a.id, text: p.text, title: p.title,
         onEnd: (id) => {
           if (id && id.startsWith('drop-')) Store.silent(s => { s.fan.listenedDrops[id] = true; });
         },
@@ -224,6 +231,7 @@
           st.chat.push({ kind: 'voice', id: cid, text: qq.draft, q: qq.text, when: 'Just now' });
           st.pendingAsks = st.pendingAsks.filter(p => p !== qq.id);
           st.fan.unread += 1;
+          notify(st, 'Angela answered you', '"' + qq.text.slice(0, 60) + (qq.text.length > 60 ? '…' : '') + '" — tap to listen.', '#/fan/ask');
           // real browser notification if the fan enabled voice-reply alerts (You → Notifications)
           if (st.fan.settings && st.fan.settings.replyAlerts &&
               typeof Notification !== 'undefined' && Notification.permission === 'granted') {
@@ -298,6 +306,7 @@
         if (slot === 'now') {
           s.drops.unshift({ id: 'drop-' + Date.now(), title, script, when: 'Just now', listens: 0, completion: 0 });
           s.composerOpen = false;
+          notify(s, 'New drop: ' + title, 'Fresh from Angela — tap to listen.', '#/fan/home');
         } else {
           s.scheduled.unshift({ id: 'sch-' + Date.now(), slot, title, sub: 'Script approved · voice generated ✓', dur: UI.fmt(Player.estimate(script, 1)) });
           s.composerOpen = false;

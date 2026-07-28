@@ -140,6 +140,22 @@
     { id: 'sp-ritual', title: 'Your weirdest pre-game ritual', hint: 'Light one — fans love these, and it humanizes the answers.' },
   ];
 
+  // ---------- live AMA (monthly All-Access event) ----------
+  const AMA = {
+    title: 'All-Access AMA', when: 'Tonight · 7:00 PM', rsvps: 412,
+    open: "Hey everyone — welcome to the All-Access AMA. I've got my tea, I've got your questions, and we've got the whole hour. No agenda, no media training tonight. Let's get into it.",
+    answers: [
+      {
+        q: "What's the one drill you'd never skip?", from: 'Priya N.',
+        a: "Two-touch angling walls, every single skate. It's boring, and that's the point — gap control is a habit, not a highlight. Five minutes of honest feet before practice bought me more ice time than any slapshot I ever worked on.",
+      },
+      {
+        q: 'What was your welcome-to-the-Olympics moment?', from: 'Dev K.',
+        a: "Walking into the village in Nagano and realizing the person in front of me in the food line was a legend I had taped to my bedroom wall. I was seventeen. I dropped my tray. She helped me pick it up — and that's when I learned champions are just people who kept showing up.",
+      },
+    ],
+  };
+
   // ---------- discover ----------
   const ATHLETES = [
     { id: 'sana', name: 'Sana Ito', sport: 'Tennis', mono: 'SI', color: '#7EB3F7', line: 'Serve mechanics — Lesson 1 live now' },
@@ -161,6 +177,11 @@
         follows: { sana: false, okafor: false, pia: false },
         listenedDrops: { 'drop-2': true, 'drop-3': true },
         unread: 0,                  // unread voice replies (badge on Ask tab)
+        notifs: [
+          { id: 'n-ama', text: 'Live tonight: All-Access AMA · 7:00 PM', sub: 'Angela answers live, in her real voice. Tap to preview the room.', when: 'Today', to: '#/fan/live', read: false },
+          { id: 'n-drop', text: 'New drop: Morning skate mindset', sub: '2 minutes of Angela before you hit the ice.', when: 'This morning', to: '#/fan/home', read: false },
+          { id: 'n-welcome', text: 'Welcome to Strive 🎉', sub: 'You arrived through Angela’s invite. Ask her anything.', when: 'May 2026', to: '#/fan/ask', read: true },
+        ],
       },
       lessonProgress: { l1: 100, l2: 100, l3: 100, l4: 62 },   // % per lesson id
       chaptersDone: {},                 // lessonId -> [visited chapter indices]
@@ -220,7 +241,7 @@
   }
 
   window.Data = {
-    IMG, DROPS, SCHEDULED, COURSE, KB, SENSITIVE_WORDS, SENSITIVE_PREFIX, DECLINE_TEXT, ATHLETES, STORY_PROMPTS,
+    IMG, DROPS, SCHEDULED, COURSE, KB, SENSITIVE_WORDS, SENSITIVE_PREFIX, DECLINE_TEXT, ATHLETES, STORY_PROMPTS, AMA,
     seed, isSensitive, findKb, draftFor, norm,
   };
 })();

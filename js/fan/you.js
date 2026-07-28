@@ -202,15 +202,26 @@
     Store.set(s => { s.fan.settings = s.fan.settings || {}; s.fan.settings[k] = !s.fan.settings[k]; });
   };
 
-  // Settings: mark a drop available offline (instant) or remove it
+  // Settings: download a drop for offline — genuinely caches its WellSaid audio via the Cache API
   window.Actions.youDl = function (a) {
     const id = a && a.id;
     if (!id) return;
+    const drop = Store.get().drops.find(d => d.id === id);
+    const src = drop && window.VO ? VO.srcFor(drop.script) : null;
     Store.set(s => {
       s.fan.downloads = s.fan.downloads || {};
       if (a.remove) delete s.fan.downloads[id];
       else s.fan.downloads[id] = true;
     });
+    if (!('caches' in window) || !src) return;
+    if (a.remove) {
+      caches.open('strive-media-v1').then(c => c.delete(src)).catch(() => {});
+    } else {
+      caches.open('strive-media-v1')
+        .then(c => c.add(src))
+        .then(() => Actions.toast({ msg: 'Saved for offline — plays with no connection ✓' }))
+        .catch(() => {});
+    }
   };
 
   // Settings: fake App Store restore — two sequential toasts

@@ -9,9 +9,28 @@
   'use strict';
 
   const P = {
-    id: null, playing: false, t: 0, dur: 0, text: '', engine: null, // 'audio' | 'tts'
+    id: null, playing: false, t: 0, dur: 0, text: '', title: '', engine: null, // 'audio' | 'tts'
     _utter: null, _timer: null, _onEnd: null, _audio: null,
   };
+
+  /* lock-screen / hardware-key controls for a real audio-app feel */
+  function mediaSession(on) {
+    if (!('mediaSession' in navigator)) return;
+    try {
+      if (!on) { navigator.mediaSession.playbackState = 'paused'; return; }
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: P.title || 'STRIVE',
+        artist: 'Angela Ruggiero · STRIVE',
+        album: 'Voice by WellSaid Studio',
+        artwork: [{ src: 'assets/angela1.webp', sizes: '526x583', type: 'image/webp' }],
+      });
+      navigator.mediaSession.playbackState = 'playing';
+      navigator.mediaSession.setActionHandler('play', () => { if (P.id) window.Player.toggle({ id: P.id, text: P.text, title: P.title }); });
+      navigator.mediaSession.setActionHandler('pause', () => { if (P.id && P.playing) window.Player.toggle({ id: P.id, text: P.text, title: P.title }); });
+      navigator.mediaSession.setActionHandler('seekbackward', () => window.Player.seek(-15));
+      navigator.mediaSession.setActionHandler('seekforward', () => window.Player.seek(15));
+    } catch (e) {}
+  }
 
   /* ---------- shared ---------- */
 
@@ -77,6 +96,7 @@
   function finish() {
     clearTimer();
     teardownAudio();
+    mediaSession(false);
     const wasId = P.id;
     P.playing = false; P.t = 0; P.engine = null;
     if (window.speechSynthesis) try { speechSynthesis.cancel(); } catch (e) {}
@@ -157,6 +177,7 @@
         if (P.engine === 'audio' && P._audio) { try { P._audio.pause(); } catch (e) {} }
         else if (window.speechSynthesis) try { speechSynthesis.pause(); } catch (e) {}
         clearTimer();
+        mediaSession(false);
         updateDom(); if (window.App) App.render();
         return;
       }
@@ -167,15 +188,17 @@
           if (window.speechSynthesis) try { speechSynthesis.resume(); } catch (e) {}
           ttsTick();
         }
+        mediaSession(true);
         updateDom(); if (window.App) App.render();
         return;
       }
       // new playable — stop whatever is active, then choose engine by text
       clearTimer(); teardownAudio();
       if (window.speechSynthesis) try { speechSynthesis.cancel(); } catch (e) {}
-      P.id = p.id; P.text = p.text; P._onEnd = p.onEnd || null;
+      P.id = p.id; P.text = p.text; P.title = p.title || ''; P._onEnd = p.onEnd || null;
       const src = srcForText(p.text);
       if (src) startAudio(src, p.text); else startTts(p.text);
+      mediaSession(true);
       if (window.App) App.render();
     },
 

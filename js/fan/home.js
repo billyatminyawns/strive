@@ -15,6 +15,7 @@
       const minLeft = Math.max(1, Math.round(lesson.min * (1 - prog / 100)));
       const playingDrop = Player.isPlaying(drop.id);
       const editing = !!s.editingInterests;
+      const hasUnread = (s.fan.notifs || []).some(n => !n.read);
 
       return `<div class="p-scroll" style="padding:70px 18px 8px">
         <div style="display:flex;flex-direction:column;gap:16px">
@@ -24,7 +25,13 @@
               <div style="font-size:22px;font-weight:800">Good morning, ${esc(s.fan.name)}</div>
               <div style="font-size:12px;color:var(--dim2);margin-top:2px">Wednesday, July 22</div>
             </div>
-            <button style="background:none;border:none;padding:0" data-action="nav" data-arg="${arg('#/fan/you')}">${mono(s.fan.mono, 36, s.fan.color)}</button>
+            <div style="display:flex;align-items:center;gap:14px">
+              <button style="background:none;border:none;padding:0;position:relative;display:flex;color:var(--dim2)" data-action="nav" data-arg="${arg('#/fan/notifs')}" aria-label="Notifications">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 3a4 4 0 00-4 4c0 3.6-1.4 4.7-1.4 4.7h10.8S14 10.6 14 7a4 4 0 00-4-4z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M8.4 14.6a1.6 1.6 0 003.2 0" stroke="currentColor" stroke-width="1.5"/></svg>
+                ${hasUnread ? `<span style="position:absolute;top:-1px;right:-1px;width:8px;height:8px;border-radius:50%;background:var(--mint);border:2px solid var(--screen)"></span>` : ''}
+              </button>
+              <button style="background:none;border:none;padding:0" data-action="nav" data-arg="${arg('#/fan/you')}">${mono(s.fan.mono, 36, s.fan.color)}</button>
+            </div>
           </div>
 
           <div class="gradcard" style="padding:18px;display:flex;flex-direction:column;gap:12px">
@@ -44,6 +51,16 @@
               <div style="flex:1">${wave(drop.id, 22, 24)}</div>
             </div>
             <div class="progress"><div data-prog-for="${drop.id}" style="width:${playingDrop ? Math.min(100, Player.state.t / Player.state.dur * 100) : (s.fan.listenedDrops[drop.id] ? 100 : 0)}%"></div></div>
+          </div>
+
+          <div class="card" style="border:1px solid rgba(240,138,138,0.35);padding:13px 14px;display:flex;align-items:center;gap:12px">
+            <div style="flex:1;min-width:0">
+              <span class="pill" style="font-size:9.5px;font-weight:900;letter-spacing:0.08em;color:var(--red);border:1px solid rgba(240,138,138,0.4);padding:3px 8px">
+                <span style="width:6px;height:6px;border-radius:50%;background:var(--red);animation:livepulse 1s infinite"></span>LIVE</span>
+              <div style="font-size:14px;font-weight:800;margin-top:7px">${esc(Data.AMA.title)}</div>
+              <div style="font-size:11.5px;color:var(--dim2);margin-top:2px">Tonight 7:00 PM · ${esc(Data.AMA.rsvps)} going</div>
+            </div>
+            <button class="btn btn-mint" style="flex-shrink:0" data-action="nav" data-arg="${arg('#/fan/live')}">Join</button>
           </div>
 
           <div style="display:flex;flex-direction:column;gap:10px">

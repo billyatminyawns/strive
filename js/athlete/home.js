@@ -53,6 +53,16 @@
                 <div style="font-size:13px;color:var(--dim2)">Nothing needs you right now.</div>
               </div>`}
 
+          <div class="card" style="border-color:rgba(240,138,138,0.35);padding:15px 16px;display:flex;align-items:center;gap:12px">
+            <div style="flex:1;min-width:0">
+              <span class="pill" style="font-size:10px;font-weight:900;letter-spacing:0.08em;color:var(--red);background:rgba(240,138,138,0.12);padding:3px 8px">
+                <span style="width:6px;height:6px;border-radius:50%;background:var(--red)"></span>LIVE</span>
+              <div style="font-size:13.5px;font-weight:800;margin-top:8px">All-Access AMA · 7:00 PM</div>
+              <div style="font-size:11.5px;color:var(--dim2);margin-top:3px">${esc(Data.AMA.rsvps)} RSVPs · your open + 2 answers are prepped</div>
+            </div>
+            <button class="btn btn-mint-line" style="flex-shrink:0;font-size:12px;padding:10px 14px;white-space:nowrap" data-action="nav" data-arg="${arg('#/fan/live')}">Preview room</button>
+          </div>
+
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
             ${statTile(s.stats.members.toLocaleString(), 'MEMBERS', s.stats.membersDelta)}
             ${statTile(s.stats.revenue, 'REVENUE', s.stats.revenueDelta)}
