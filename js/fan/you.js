@@ -215,9 +215,9 @@
     });
     if (!('caches' in window) || !src) return;
     if (a.remove) {
-      caches.open('strive-media-v1').then(c => c.delete(src)).catch(() => {});
+      caches.open('strive-media-v2').then(c => c.delete(src)).catch(() => {});
     } else {
-      caches.open('strive-media-v1')
+      caches.open('strive-media-v2')
         .then(c => c.add(src))
         .then(() => Actions.toast({ msg: 'Saved for offline — plays with no connection ✓' }))
         .catch(() => {});

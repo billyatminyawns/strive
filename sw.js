@@ -3,7 +3,7 @@
    media (voice clips, images, PDFs). The fan "Downloads" feature pre-caches drop
    audio into VO_CACHE so it plays with no connection. */
 const SHELL_CACHE = 'strive-shell-v1';
-const VO_CACHE = 'strive-media-v1';
+const VO_CACHE = 'strive-media-v2';
 
 const SHELL = [
   './',
