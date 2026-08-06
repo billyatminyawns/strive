@@ -1,8 +1,10 @@
 /* STRIVE demo API — Cloudflare Worker.
    POST /draft  {question, guards?} → Claude (Opus 4.8) drafts Angela's reply from her knowledge base.
-   POST /voice  {text}              → WellSaid Studio renders the text in Angela's demo voice (mp3).
+   POST /voice  {text}              → renders the text in Angela's demo voice (mp3).
+                                      Fish Audio (her cloned "AR" voice) when FISH_API_KEY is set;
+                                      falls back to WellSaid Studio when only WELLSAID_API_KEY is.
    GET  /health                     → {ok}
-   Secrets: ANTHROPIC_API_KEY, WELLSAID_API_KEY. CORS-locked to the demo origins.
+   Secrets: ANTHROPIC_API_KEY, FISH_API_KEY, WELLSAID_API_KEY. CORS-locked to the demo origins.
    Abuse guards: per-isolate IP counters + global daily caps (best effort, demo-grade). */
 
 import Anthropic from '@anthropic-ai/sdk';
@@ -113,17 +115,23 @@ async function handleDraft(request, env, cors) {
   }
 }
 
+// Fish Audio: Billy's private cloned voice "AR Engaging Discussion Voice"
+const FISH_VOICE = '45798132339e4f52be5ffe5a59323ff9';
+const FISH_MODEL = 's2-pro';
+
 async function handleVoice(request, env, cors, ctx) {
-  if (!env.WELLSAID_API_KEY) return json({ error: 'voice service not configured' }, 503, cors);
+  const provider = env.FISH_API_KEY ? 'fish' : env.WELLSAID_API_KEY ? 'wellsaid' : null;
+  if (!provider) return json({ error: 'voice service not configured' }, 503, cors);
 
   let body;
   try { body = await request.json(); } catch { return json({ error: 'bad json' }, 400, cors); }
   const text = String(body.text || '').replace(/\s+/g, ' ').trim();
   if (!text || text.length > 950) return json({ error: 'text must be 1-950 chars' }, 400, cors);
 
-  // cache by content so repeated plays don't re-bill WellSaid
+  // cache by content + voice so repeated plays don't re-bill the TTS provider
   const cache = caches.default;
-  const cacheKey = new Request('https://cache.strive-api.internal/voice/' + await sha1(text + '|48|caruso'));
+  const voiceTag = provider === 'fish' ? 'fish|' + FISH_VOICE + '|' + FISH_MODEL : '48|caruso';
+  const cacheKey = new Request('https://cache.strive-api.internal/voice/' + await sha1(text + '|' + voiceTag));
   const hit = await cache.match(cacheKey);
   if (hit) {
     const res = new Response(hit.body, hit);
@@ -135,19 +143,25 @@ async function handleVoice(request, env, cors, ctx) {
   const capMsg = budgetCheck('voice', ip);
   if (capMsg) return json({ error: capMsg }, 429, cors);
 
-  const wsRes = await fetch('https://api.wellsaidlabs.com/v1/tts/stream', {
-    method: 'POST',
-    headers: { 'X-Api-Key': env.WELLSAID_API_KEY, 'content-type': 'application/json' },
-    body: JSON.stringify({
-      speaker_id: 48,                 // Vanessa N. · Conversational — the demo's Angela voice
-      text,
-      model: 'caruso',
-      audio_configs: { file_format: 'mp3' },
-    }),
-  });
+  const wsRes = provider === 'fish'
+    ? await fetch('https://api.fish.audio/v1/tts', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + env.FISH_API_KEY, 'content-type': 'application/json', 'model': FISH_MODEL },
+        body: JSON.stringify({ text, reference_id: FISH_VOICE, format: 'mp3' }),
+      })
+    : await fetch('https://api.wellsaidlabs.com/v1/tts/stream', {
+        method: 'POST',
+        headers: { 'X-Api-Key': env.WELLSAID_API_KEY, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          speaker_id: 48,             // Vanessa N. · Conversational — the demo's stand-in voice
+          text,
+          model: 'caruso',
+          audio_configs: { file_format: 'mp3' },
+        }),
+      });
   if (!wsRes.ok) {
     const detail = (await wsRes.text().catch(() => '')).slice(0, 200);
-    return json({ error: 'voice failed', status: wsRes.status, detail }, 502, cors);
+    return json({ error: 'voice failed', provider, status: wsRes.status, detail }, 502, cors);
   }
 
   const audio = await wsRes.arrayBuffer();
