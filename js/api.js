@@ -134,7 +134,10 @@ RULES:
       const key = VO.key(t);
       if (VO.srcFor(t) || runtime[key]) return Promise.resolve(true);
       if (pendingVoice[key]) return pendingVoice[key];
-      pendingVoice[key] = post('/voice', { text: t }, 45000)
+      // Voice Studio's Pace slider (0–100) drives real delivery: 45 ≈ 0.87×, the library's pace
+      const pace = (window.Store && Store.get().delivery && Store.get().delivery.pace);
+      const speed = Math.round((0.6 + 0.6 * ((typeof pace === 'number' ? pace : 45) / 100)) * 100) / 100;
+      pendingVoice[key] = post('/voice', { text: t, speed: speed }, 45000)
         .then(r => (r.ok ? r.blob() : null))
         .then(b => {
           delete pendingVoice[key];

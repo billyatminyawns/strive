@@ -118,6 +118,7 @@ async function handleDraft(request, env, cors) {
 // Fish Audio: Billy's private cloned voice "AR Engaging Discussion Voice"
 const FISH_VOICE = '45798132339e4f52be5ffe5a59323ff9';
 const FISH_MODEL = 's2-pro';
+const FISH_SPEED_DEFAULT = 0.87;  // matches the pre-rendered library's slower, more deliberate pace
 
 async function handleVoice(request, env, cors, ctx) {
   const provider = env.FISH_API_KEY ? 'fish' : env.WELLSAID_API_KEY ? 'wellsaid' : null;
@@ -128,9 +129,12 @@ async function handleVoice(request, env, cors, ctx) {
   const text = String(body.text || '').replace(/\s+/g, ' ').trim();
   if (!text || text.length > 950) return json({ error: 'text must be 1-950 chars' }, 400, cors);
 
-  // cache by content + voice so repeated plays don't re-bill the TTS provider
+  // delivery: pace comes from the app's Voice Studio slider; clamp to a sane range
+  const speed = Math.min(1.3, Math.max(0.6, Number(body.speed) || FISH_SPEED_DEFAULT));
+
+  // cache by content + voice + delivery so repeated plays don't re-bill the TTS provider
   const cache = caches.default;
-  const voiceTag = provider === 'fish' ? 'fish|' + FISH_VOICE + '|' + FISH_MODEL : '48|caruso';
+  const voiceTag = provider === 'fish' ? 'fish|' + FISH_VOICE + '|' + FISH_MODEL + '|' + speed : '48|caruso';
   const cacheKey = new Request('https://cache.strive-api.internal/voice/' + await sha1(text + '|' + voiceTag));
   const hit = await cache.match(cacheKey);
   if (hit) {
@@ -147,7 +151,7 @@ async function handleVoice(request, env, cors, ctx) {
     ? await fetch('https://api.fish.audio/v1/tts', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + env.FISH_API_KEY, 'content-type': 'application/json', 'model': FISH_MODEL },
-        body: JSON.stringify({ text, reference_id: FISH_VOICE, format: 'mp3' }),
+        body: JSON.stringify({ text, reference_id: FISH_VOICE, format: 'mp3', prosody: { speed } }),
       })
     : await fetch('https://api.wellsaidlabs.com/v1/tts/stream', {
         method: 'POST',
