@@ -17,10 +17,12 @@
     },
     {
       id: 'drop-2', title: 'Road trip Q&A', when: 'Yesterday', listens: 6911, completion: 88,
+      why: 'Fans keep asking about this one',
       script: "Road trip questions, rapid fire. Best road habit? Unpack fully, even for one night — chaos in the room becomes chaos on the ice. Roommates? Pick the one who sleeps. Food? Eat what you know, not what's exciting. And the big one — homesickness. It's not weakness, it's a signal you have something worth missing. Call home, then close the loop and be where your feet are.",
     },
     {
       id: 'drop-3', title: 'Gold medal morning', when: 'Feb 17', listens: 12388, completion: 95,
+      why: 'Most replayed this month',
       script: "People ask what the morning of the gold medal game felt like. Honestly? Quiet. We'd done the loud part for four years. I remember tying my skates and thinking — nothing new today. Same tape job, same warm-up, same first shift plan. Big moments don't want more from you. They want exactly what you've already built, delivered on time.",
     },
   ];
@@ -72,7 +74,16 @@
       q: "What's your morning routine?",
       a: "Boring and repeatable. Up at six, ten minutes of mobility before coffee, and I write the day's one hard thing on a sticky note. Champions aren't morning people — they're consistency people who happen to be awake.",
     },
+    {
+      // keys stay multi-word or unambiguous — findKb is substring-based, so bare 'ioc'/'boards' would hijack "mediocre"/"along the boards"
+      id: 'kb-ioc', keys: ['the ioc', 'olympic committee', 'after hockey', 'since hockey', 'retire', 'board member', 'boardroom', 'businesses', 'executive', 'career after', 'life after'],
+      q: 'What have you done since hockey?',
+      a: "Hockey was chapter one, not the whole book. I served on the IOC as an athlete rep, sat on boards, built companies, and kept collecting degrees along the way. Different rooms, same game: show up prepared, ask the honest question, do the boring work. The rink just taught me first.",
+    },
   ];
+
+  // interest picker pool — general-first (universal topics), sport jargon last
+  const INTEREST_POOL = ['Mindset', 'Nutrition', 'Recovery', 'Training', 'Stories', 'Leadership', 'Culture', 'Hockey IQ'];
 
   // sensitive topics — auto-declined politely when the guardrail is on.
   // WORDS match on token boundaries (so "issue"/"pursue" don't trip "sue"); PREFIX matches morphological variants.
@@ -138,6 +149,7 @@
     { id: 'sp-harvard', title: 'What Harvard taught you about hockey', hint: 'Bridges your two worlds — top-requested topic among Inner Circle fans.' },
     { id: 'sp-mentor', title: 'The mentor who changed everything', hint: 'The twin has no source material on your early coaches.' },
     { id: 'sp-ritual', title: 'Your weirdest pre-game ritual', hint: 'Light one — fans love these, and it humanizes the answers.' },
+    { id: 'sp-class', title: 'Pitch your next masterclass', hint: 'The class you’ve always wanted to teach — name it and talk through lesson one. We build the outline.' },
   ];
 
   // ---------- live AMA (monthly All-Access event) ----------
@@ -158,27 +170,27 @@
 
   // ---------- discover ----------
   const ATHLETES = [
-    { id: 'sana', name: 'Sana Ito', sport: 'Tennis', mono: 'SI', color: '#7EB3F7', line: 'Serve mechanics — Lesson 1 live now' },
-    { id: 'okafor', name: 'Marcus Okafor', sport: 'Track', mono: 'MO', color: '#FCA46F', line: 'Ask-me-anything opens Friday' },
-    { id: 'pia', name: 'Pia Laurent', sport: 'Soccer', mono: 'PL', color: '#CBA9F7', line: 'Set pieces, decoded — trailer out' },
+    { id: 'sana', name: 'Sana Ito', sport: 'Tennis', mono: 'SI', color: '#7EB3F7', line: 'Serve mechanics — Lesson 1 live now', topics: ['Training', 'Mindset'] },
+    { id: 'okafor', name: 'Marcus Okafor', sport: 'Track', mono: 'MO', color: '#FCA46F', line: 'Ask-me-anything opens Friday', topics: ['Nutrition', 'Recovery'] },
+    { id: 'pia', name: 'Pia Laurent', sport: 'Soccer', mono: 'PL', color: '#CBA9F7', line: 'Set pieces, decoded — trailer out', topics: ['Leadership', 'Culture', 'Stories'] },
   ];
 
   // ---------- seed state ----------
   function seed() {
     return {
-      __v: 3,
+      __v: 4,
       unlocked: false,              // invite gate passed?
       fan: {
         name: 'Marcus', mono: 'M', color: '#CBA9F7',
         tier: 'All-Access', billing: 'monthly', memberSince: 'May 2026',
         streak: 12,
-        interests: ['Mindset', 'Nutrition', 'Leadership', 'Hockey IQ'],
+        interests: ['Mindset', 'Nutrition', 'Recovery', 'Stories'],
         savedReplies: ['c1'],
         follows: { sana: false, okafor: false, pia: false },
-        listenedDrops: { 'drop-2': true, 'drop-3': true },
+        listenedDrops: { 'drop-2': true },   // drop-3 stays fresh so "Suggested" has a real pull
         unread: 0,                  // unread voice replies (badge on Ask tab)
         notifs: [
-          { id: 'n-ama', text: 'Live tonight: All-Access AMA · 7:00 PM', sub: 'Angela answers live, in her real voice. Tap to preview the room.', when: 'Today', to: '#/fan/live', read: false },
+          { id: 'n-ama', text: 'Live tonight: All-Access AMA · 7:00 PM', sub: 'Live drops in Angela’s voice — only for the fans in the room. Tap to preview.', when: 'Today', to: '#/fan/live', read: false },
           { id: 'n-drop', text: 'New drop: Morning skate mindset', sub: '2 minutes of Angela before you hit the ice.', when: 'This morning', to: '#/fan/home', read: false },
           { id: 'n-welcome', text: 'Welcome to Strive 🎉', sub: 'You arrived through Angela’s invite. Ask her anything.', when: 'May 2026', to: '#/fan/ask', read: true },
         ],
@@ -190,7 +202,7 @@
         { kind: 'q', text: 'How did you reset after a bad shift in big games?' },
         { kind: 'voice', id: 'c1', text: KB[0].a, q: 'How did you reset after a bad shift in big games?', when: 'Tuesday' },
       ],
-      chips: ['kb-nerves', 'kb-gap'],   // suggested question chips still unasked
+      chips: ['kb-nerves', 'kb-ioc'],   // suggested question chips still unasked — one hockey, one "didn't know to ask"
       pendingAsks: [],                  // fan question ids waiting on Angela
       inbox: INBOX.map(q => ({ ...q })),
       inboxSelected: 'q-marcus',
@@ -241,7 +253,7 @@
   }
 
   window.Data = {
-    IMG, DROPS, SCHEDULED, COURSE, KB, SENSITIVE_WORDS, SENSITIVE_PREFIX, DECLINE_TEXT, ATHLETES, STORY_PROMPTS, AMA,
+    IMG, DROPS, SCHEDULED, COURSE, KB, SENSITIVE_WORDS, SENSITIVE_PREFIX, DECLINE_TEXT, ATHLETES, STORY_PROMPTS, AMA, INTEREST_POOL,
     seed, isSensitive, findKb, draftFor, norm,
   };
 })();

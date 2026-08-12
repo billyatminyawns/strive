@@ -6,6 +6,8 @@
   window.Screens = window.Screens || {};
 
   const SPORTS = ['All', 'Hockey', 'Tennis', 'Track', 'Soccer'];
+  // topic discovery sits beside sport discovery — universal subjects reach past the sports fan
+  const TOPICS = ['Mindset', 'Nutrition', 'Training', 'Recovery', 'Stories', 'Leadership', 'Culture'];
   const BROWSE = [
     { sport: 'Hockey', count: 12 },
     { sport: 'Tennis', count: 9 },
@@ -13,7 +15,7 @@
   ];
 
   // Angela is a 4th searchable row — she navigates to her profile instead of Follow.
-  const ANGELA = { id: 'angela', name: 'Angela Ruggiero', sport: 'Hockey', mono: 'AR', color: '#9BB4C7', line: 'Defense, Decoded — new season', nav: true };
+  const ANGELA = { id: 'angela', name: 'Angela Ruggiero', sport: 'Hockey', mono: 'AR', color: '#9BB4C7', line: 'Defense, Decoded — new season', nav: true, topics: ['Mindset', 'Stories', 'Leadership'] };
 
   // restore the scroll position after a filter re-render (browse tiles live at the bottom)
   let savedScroll = 0, restoreScroll = false;
@@ -27,11 +29,13 @@
     render(s) {
       const q = (s.discoverQuery || '').trim().toLowerCase();
       const sport = s.discoverSport || 'All';
+      const topic = s.discoverTopic || 'All';
 
       const rows = [ANGELA].concat(Data.ATHLETES);
       const matchRow = a =>
         (sport === 'All' || a.sport === sport) &&
-        (!q || (a.name + ' ' + a.sport + ' ' + a.line).toLowerCase().includes(q));
+        (topic === 'All' || (a.topics || []).includes(topic)) &&
+        (!q || (a.name + ' ' + a.sport + ' ' + a.line + ' ' + (a.topics || []).join(' ')).toLowerCase().includes(q));
       const shown = rows.filter(matchRow);
 
       // browse tiles stay as sport shortcuts — the query narrows them, the active sport just highlights
@@ -55,6 +59,15 @@
                 style="font-size:11.5px;font-weight:${on ? 800 : 700};border-radius:999px;padding:6px 12px;${on
                   ? 'color:var(--ink);background:var(--mint);border:none'
                   : 'color:var(--sub);background:none;border:1px solid var(--line2)'}">${esc(sp)}</button>`;
+            }).join('')}
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:-6px">
+            ${TOPICS.map(tp => {
+              const on = topic === tp;
+              return `<button data-action="dscTopic" data-arg="${arg({ topic: tp })}"
+                style="font-size:11.5px;font-weight:${on ? 800 : 700};border-radius:999px;padding:6px 12px;${on
+                  ? 'color:var(--ink);background:var(--lav);border:none'
+                  : 'color:var(--lav);background:none;border:1px solid var(--line2)'}">${esc(tp)}</button>`;
             }).join('')}
           </div>
 
@@ -91,14 +104,14 @@
                         data-action="toggleFollow" data-arg="${arg({ id: a.id })}">Follow</button>`)}
               </div>`).join('')
             : `<div style="background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 14px;text-align:center">
-                <div style="font-size:12.5px;color:var(--dim2)">No athletes match — try a sport like Tennis.</div>
+                <div style="font-size:12.5px;color:var(--dim2)">No athletes match — try a sport like Tennis, or a topic like Mindset.</div>
               </div>`}
           </div>
 
           <div style="display:flex;flex-direction:column;gap:8px;padding-bottom:10px">
             <div style="display:flex;justify-content:space-between;align-items:baseline">
               <div style="font-size:13px;font-weight:800;color:#B9C0BA">Browse by sport</div>
-              <button data-action="dscReset" style="background:none;border:none;padding:0;font-size:11px;font-weight:700;color:var(--mint)">All sports</button>
+              <button data-action="dscReset" style="background:none;border:none;padding:0;font-size:11px;font-weight:700;color:var(--mint)">Reset filters</button>
             </div>
             ${browseShown.length ? `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
               ${browseShown.map(b => {
@@ -132,8 +145,13 @@
     stash(el);
     Store.set(s => { s.discoverSport = (a && a.sport) || 'All'; });
   };
+  // topic chips toggle: tapping the active topic clears it
+  window.Actions.dscTopic = function (a, el) {
+    stash(el);
+    Store.set(s => { s.discoverTopic = s.discoverTopic === a.topic ? 'All' : a.topic; });
+  };
   window.Actions.dscReset = function (a, el) {
     stash(el);
-    Store.set(s => { s.discoverQuery = ''; s.discoverSport = 'All'; });
+    Store.set(s => { s.discoverQuery = ''; s.discoverSport = 'All'; s.discoverTopic = 'All'; });
   };
 })();

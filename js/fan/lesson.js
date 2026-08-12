@@ -12,9 +12,6 @@
   };
   const sheetFor = id => SHEET_FOR[id] || 'assets/sheets/tryout-prep-checklist.pdf';
 
-  const dlIconMint = `<svg width="12" height="12" viewBox="0 0 14 14" aria-hidden="true">
-    <path d="M7 1.5v7M4 5.7L7 8.7l3-3" stroke="var(--mint)" stroke-width="1.6" fill="none"/>
-    <path d="M2 10.5V12h10v-1.5" stroke="var(--mint)" stroke-width="1.6" fill="none"/></svg>`;
 
   Screens['fan/lesson'] = {
     tab: 'home',
@@ -51,8 +48,7 @@
             <div style="display:flex;align-items:center;gap:9px;margin-top:7px">
               <span style="font-size:12px;color:var(--dim2)">${l.min} min</span>
               <a href="${esc(sheetFor(l.id))}" download data-action="lesSheet"
-                style="display:inline-flex;align-items:center;gap:6px;text-decoration:none;font-size:11.5px;font-weight:800;color:var(--mint);border:1px solid var(--chip-line);background:var(--chip-bg);border-radius:999px;padding:5px 11px">
-                ${dlIconMint}Drill sheet (PDF)</a>
+                style="font-size:11px;color:var(--dim2);text-decoration:underline;text-underline-offset:2px">optional: printable drill sheet</a>
             </div>
           </div>
 

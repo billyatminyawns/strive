@@ -94,8 +94,13 @@
           </div>
 
           <div style="display:flex;flex-direction:column;gap:10px;padding-bottom:10px">
-            <div style="font-size:13px;font-weight:800;color:#B9C0BA">Earlier drops</div>
-            ${s.drops.slice(1).map(d => `
+            <div style="display:flex;justify-content:space-between;align-items:baseline">
+              <div style="font-size:13px;font-weight:800;color:#B9C0BA">Suggested for you</div>
+              <span style="font-size:10.5px;color:var(--dim2)">things you didn't know to ask</span>
+            </div>
+            ${s.drops.slice(1)
+              .slice().sort((a, b) => (s.fan.listenedDrops[a.id] ? 1 : 0) - (s.fan.listenedDrops[b.id] ? 1 : 0))
+              .map(d => `
               <div class="card2" style="border-radius:14px;padding:12px;display:flex;align-items:center;gap:12px">
                 <div style="width:34px;height:34px;border-radius:50%;background:#242A25;display:flex;align-items:center;justify-content:center;flex-shrink:0">
                   <button class="playbtn" style="width:34px;height:34px;background:#242A25" data-action="togglePlay" data-arg="${arg({ id: d.id })}" data-playbtn-for="${d.id}">
@@ -103,7 +108,7 @@
                 </div>
                 <div style="flex:1;min-width:0">
                   <div style="font-size:13.5px;font-weight:700">${esc(d.title)}</div>
-                  <div style="font-size:11.5px;color:var(--dim2)">${esc(d.when)} · <span data-dur-for="${d.id}">${fmt(Player.estimate(d.script, 1))}</span>${s.fan.listenedDrops[d.id] ? ' · Played ✓' : ''}</div>
+                  <div style="font-size:11.5px;color:var(--dim2)">${d.why && !s.fan.listenedDrops[d.id] ? `<span style="color:var(--mint);font-weight:700">${esc(d.why)}</span>` : esc(d.when)} · <span data-dur-for="${d.id}">${fmt(Player.estimate(d.script, 1))}</span>${s.fan.listenedDrops[d.id] ? ' · Played ✓' : ''}</div>
                 </div>
                 ${wave(d.id, 10, 16, '#3C463E')}
               </div>`).join('')}
@@ -121,7 +126,7 @@
 
   // "+ Add" chip: add the first suggestion not already present
   window.Actions.homeAddInterest = function () {
-    const pool = ['Recovery', 'Film study', 'Off-ice strength', 'Team culture', 'Nagano stories'];
+    const pool = Data.INTEREST_POOL;
     const s = Store.get();
     const next = pool.find(p => !s.fan.interests.includes(p));
     if (!next) { Actions.toast({ msg: 'That’s the whole suggestions pool — nice.' }); return; }

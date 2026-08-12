@@ -81,7 +81,10 @@
           </div>
 
           <div style="display:flex;flex-direction:column;gap:10px">
-            <div style="font-size:13px;font-weight:800;color:#B9C0BA">Masterclass</div>
+            <div style="display:flex;justify-content:space-between;align-items:baseline">
+              <div style="font-size:13px;font-weight:800;color:#B9C0BA">Masterclass</div>
+              <span style="font-size:10.5px;color:var(--dim2)">class 1 of 3 · where Angela goes deepest</span>
+            </div>
             <div class="gradcard" style="padding:16px;display:flex;flex-direction:column;gap:12px">
               <div style="display:flex;align-items:center;gap:12px">
                 <img src="${Data.IMG.skate}" alt="" style="width:76px;height:50px;border-radius:10px;object-fit:cover;object-position:50% 25%;flex-shrink:0">

@@ -1,4 +1,4 @@
-/* Fan · Live AMA — the monthly All-Access room, live in Angela's real voice.
+/* Fan · Live AMA — the monthly All-Access room: live drops in Angela's voice (she's not on mic; her approved words are).
    Segments (open → a1 → a2) each play a PRE-RENDERED WellSaid clip via Player.toggle
    (resolved by exact text). A scripted live chat drips in over time, a viewer count ticks
    up, ❤️ floats hearts. One master interval; it self-kills + resets when the hash leaves. */
@@ -131,7 +131,7 @@
                 <div style="font-size:16px;font-weight:800">Angela Ruggiero</div>
                 <div style="display:flex;align-items:center;gap:6px;margin-top:2px">
                   <span style="width:6px;height:6px;border-radius:50%;background:var(--mint);animation:livepulse 1.4s infinite"></span>
-                  <span style="font-size:11.5px;color:var(--sub2)">speaking live · her real voice</span>
+                  <span style="font-size:11.5px;color:var(--sub2)">live drop · in Angela's voice</span>
                 </div>
               </div>
             </div>
@@ -151,6 +151,7 @@
               : `<div style="font-size:13px;font-weight:700;line-height:1.35">"${esc(curA.q)}"</div>
                  <div style="font-size:10.5px;color:var(--dim2);margin-top:1px">asked by ${esc(curA.from)}</div>`}
           </div>
+          <div style="font-size:10.5px;color:var(--dim);text-align:center">Only in the room — live drops aren't saved to the Library.</div>
         </div>
 
         <!-- live chat feed (scrolls) -->
@@ -172,7 +173,7 @@
         </div>
 
         <div style="font-size:9.5px;color:var(--dim);text-align:center;line-height:1.45;padding:4px 22px 14px;flex-shrink:0">
-          Live answers are generated with WellSaid from what Angela says — every fan hears her, not a bot.</div>
+          Angela isn't on mic — her voice is. Every line was written or approved by her before it reached the room.</div>
       </div>`;
     },
 

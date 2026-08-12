@@ -10,6 +10,8 @@
   Screens['fan/invite'] = {
     noTabbar: true,
     render(s) {
+      // stage 2: code accepted — pick interests before entering (they tune the home feed)
+      if (s.invitePick) return pickScreen(s);
       const other = !!s.inviteOther;
       const err = !!s.inviteErr;
 
@@ -39,7 +41,7 @@
         <div style="display:flex;gap:8px;margin-top:26px">${boxes}</div>
 
         <button class="btn btn-mint" style="width:100%;margin-top:22px;border-radius:12px;padding:14px 0;font-size:14.5px"
-          data-action="unlock">Unlock with her code</button>
+          data-action="invCodeOk">Unlock with her code</button>
 
         <button data-action="invOther"
           style="background:none;border:none;padding:0;font-size:12.5px;font-weight:700;color:var(--mint);margin-top:14px">Have a different code?</button>`;
@@ -54,8 +56,9 @@
 
         <div style="margin-top:40px">${ava(Data.IMG.head, 118)}</div>
 
-        <div style="font-size:23px;font-weight:800;margin-top:20px">Angela invited you</div>
-        <div style="font-size:13px;color:var(--sub);line-height:1.6;margin-top:8px">Strive is invite-only while the first athletes build their rooms. Every member arrives through an athlete.</div>
+        <div class="k-label" style="font-size:10px;letter-spacing:0.2em;color:var(--mint);margin-top:24px">VIP ACCESS · FOUNDING FAN</div>
+        <div style="font-size:23px;font-weight:800;margin-top:8px">Angela saved you a seat</div>
+        <div style="font-size:13px;color:var(--sub);line-height:1.6;margin-top:8px">Strive is invite-only while the first athletes build their rooms — and Angela picked her first hundred fans herself. You're one of them.</div>
 
         ${gate}
 
@@ -63,6 +66,56 @@
 
       </div>`;
     },
+  };
+
+  /* ---------- stage 2: interest picker ---------- */
+
+  function pickScreen(s) {
+    const sel = s.invitePick;
+    const chips = Data.INTEREST_POOL.map(t => {
+      const on = sel.includes(t);
+      return `<button data-action="invPickToggle" data-arg="${arg({ tag: t })}"
+        style="font-size:13px;font-weight:800;border-radius:999px;padding:10px 16px;${on
+          ? 'color:var(--ink);background:var(--mint);border:1px solid var(--mint)'
+          : 'color:#D7DDD8;background:var(--chip-bg);border:1px solid var(--chip-line)'}">${esc(t)}</button>`;
+    }).join('');
+    return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;text-align:center;background:radial-gradient(120% 70% at 50% 0%,#182019 0%,#0F1110 60%);color:var(--txt);padding:110px 30px 44px">
+      <div style="display:flex;align-items:baseline;gap:8px">
+        <span style="font-size:30px;font-weight:900;letter-spacing:0.16em">STRIVE</span>
+        <span style="width:11px;height:11px;background:var(--mint);display:inline-block"></span>
+      </div>
+      <div style="margin-top:34px">${ava(Data.IMG.head, 84)}</div>
+      <div style="font-size:22px;font-weight:800;margin-top:18px">You're in. What do you want from Angela?</div>
+      <div style="font-size:13px;color:var(--sub);line-height:1.6;margin-top:8px">Pick a few — your drops, suggestions and classes tune to these. Change them anytime.</div>
+      <div style="display:flex;flex-wrap:wrap;gap:9px;justify-content:center;margin-top:24px">${chips}</div>
+      <button class="btn btn-mint" style="width:100%;margin-top:26px;border-radius:12px;padding:14px 0;font-size:14.5px"
+        data-action="invEnter">Enter Strive${sel.length ? ` · ${sel.length} picked` : ''}</button>
+      <button data-action="invSkip" style="background:none;border:none;padding:0;font-size:12.5px;font-weight:700;color:var(--dim2);margin-top:14px">Skip for now</button>
+      <div style="margin-top:auto;font-size:11px;color:var(--dim);line-height:1.6;padding-bottom:12px">General first, sport-deep when you want it — you don't need to know what gap control is to belong here.</div>
+    </div>`;
+  }
+
+  // toggle an interest chip on the picker
+  window.Actions.invPickToggle = function (a) {
+    Store.set(s => {
+      const i = s.invitePick.indexOf(a.tag);
+      if (i > -1) s.invitePick.splice(i, 1); else s.invitePick.push(a.tag);
+    });
+  };
+
+  // enter the app: apply picks (empty selection keeps whatever the fan had), then unlock
+  window.Actions.invEnter = function () {
+    Store.silent(s => {
+      if (s.invitePick && s.invitePick.length) s.fan.interests = s.invitePick.slice();
+      s.invitePick = null;
+    });
+    Actions.unlock();
+  };
+
+  // skip the picker entirely: existing interests stay exactly as they were
+  window.Actions.invSkip = function () {
+    Store.silent(s => { s.invitePick = null; });
+    Actions.unlock();
   };
 
   /* ---------- module-local actions ---------- */
@@ -89,11 +142,21 @@
     Actions.invSubmit(el ? el.value : '', el);
   };
 
+  // code accepted → interest picker (stage 2) before entering the app.
+  // Seed from what the fan already has (re-entry after sign-out keeps their picks).
+  window.Actions.invCodeOk = function () {
+    Store.set(s => {
+      const cur = (s.fan.interests || []).filter(t => Data.INTEREST_POOL.includes(t));
+      s.invitePick = cur.length ? cur : ['Mindset', 'Stories'];
+      s.inviteErr = false;
+    });
+  };
+
   // validate a typed code: ANGELA / MARCUS3 unlock; anything else shakes + toasts
   window.Actions.invSubmit = function (value) {
     const code = String(value || '').trim().toUpperCase();
     if (!code) return;
-    if (code === 'ANGELA' || code === 'MARCUS3') { Actions.unlock(); return; }
+    if (code === 'ANGELA' || code === 'MARCUS3') { Actions.invCodeOk(); return; }
     Store.set(s => { s.inviteErr = true; });
     Actions.toast({ msg: 'That code isn’t active in this demo — try ANGELA.' });
   };

@@ -167,25 +167,22 @@
           <span class="d">Fans train, listen, and ask. Every reply comes back in Angela's voice — not a chatbot, her approved answers, spoken.</span>
           <span class="go btn btn-mint">Open the fan app</span>
         </button>
-        <button class="door fadeup" style="animation-delay:0.32s" data-action="nav" data-arg="${arg('#/athlete/home')}">
-          <span class="k" style="color:var(--lav)">ATHLETE STUDIO · MOBILE</span>
-          <span class="t">Angela's pocket studio</span>
-          <span class="d">Swipe to approve replies, hold to capture stories in her voice, and run the whole thing from the tunnel or the tarmac.</span>
-          <span class="go btn btn-mint">Open pocket studio</span>
-        </button>
-        <button class="door fadeup" style="animation-delay:0.4s" data-action="nav" data-arg="${arg('#/studio/overview')}">
-          <span class="k">ATHLETE STUDIO · DESKTOP</span>
+        <div class="door fadeup" style="animation-delay:0.32s;width:340px;cursor:default">
+          <span class="k" style="color:var(--lav)">ATHLETE STUDIO · YOU'RE IN CONTROL</span>
           <span class="t">Where Angela runs it</span>
-          <span class="d">Curate content, tune the AI voice, and approve every reply before it ships. One hour a week, content at scale.</span>
-          <span class="go btn btn-mint">Open Strive Studio</span>
-        </button>
+          <span class="d">One studio, two ways in. Approve every reply before it ships, capture stories in your voice, tune the delivery — nothing goes out without you. One hour a week, content at scale.</span>
+          <span style="display:flex;gap:10px;margin-top:10px">
+            <button class="btn btn-mint" data-action="nav" data-arg="${arg('#/athlete/home')}">App experience</button>
+            <button class="btn btn-mint-line" data-action="nav" data-arg="${arg('#/studio/overview')}">Desktop experience</button>
+          </span>
+        </div>
       </div>
       <div style="display:flex;gap:12px;align-items:center;margin-top:38px" class="fadeup">
         <span class="pill" style="border:1px solid var(--chip-line);color:var(--mint);padding:8px 16px;font-size:11px;letter-spacing:0.12em;font-weight:800">
           <span style="width:7px;height:7px;border-radius:50%;background:var(--mint)"></span>AI VOICE POWERED BY WELLSAID</span>
         <span style="font-size:12px;color:var(--dim)">All stats and content illustrative.</span>
       </div>
-      <div style="font-size:11px;color:#3E443F;margin-top:16px">Tip: ask a question in the fan app, then swipe to approve it in the pocket studio — the loop is live.</div>
+      <div style="font-size:11px;color:#3E443F;margin-top:16px">Tip: ask a question in the fan app, then swipe to approve it in the athlete app — the loop is live.</div>
       ${window.__installPrompt ? `<button class="btn btn-mint-line fadeup" style="margin-top:18px" data-action="installApp">⤓ Install STRIVE as an app</button>` : ''}
     </div>`;
   }

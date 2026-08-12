@@ -28,6 +28,7 @@
     'xpwzy7',  // draft q-lena
     'axnv6t',  // voice studio sample line
     '14ensqe', '73jcju', '16hnm7k', '1d40o7y', '1m9bgl8', '1g3l7om', // lesson intros l1–l6
+    '10urfhl', // kb-ioc (what have you done since hockey)
     'pz25xh',  // AMA opening
     'eoilho',  // AMA answer 1 (never-skip drill)
     '1qo0m41', // AMA answer 2 (welcome-to-the-Olympics)

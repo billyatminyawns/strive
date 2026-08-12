@@ -182,7 +182,7 @@
       });
     },
     surpriseMe() {
-      const pool = ['Recovery', 'Film study', 'Off-ice strength', 'Team culture', 'Nagano stories'];
+      const pool = Data.INTEREST_POOL;
       Store.set(s => {
         const fresh = pool.filter(p => !s.fan.interests.includes(p));
         if (fresh.length) s.fan.interests.push(fresh[Math.floor(Math.random() * fresh.length)]);
