@@ -32,7 +32,7 @@
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:22px">
           ${stat(s.stats.members.toLocaleString('en-US'), 'MEMBERS', s.stats.membersDelta, true)}
           ${stat(s.stats.revenue, 'MONTHLY REVENUE', s.stats.revenueDelta, true)}
-          ${stat(s.stats.answered, 'QUESTIONS ANSWERED', s.stats.answeredNote, false)}
+          ${stat(s.stats.answered, 'QUESTIONS ANSWERED', 'median reply ' + s.stats.reply, false)}
           ${stat(s.stats.listen, 'AVG DAILY LISTEN', s.stats.listenDelta, true)}
         </div>
 

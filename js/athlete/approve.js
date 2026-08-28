@@ -158,12 +158,11 @@
     },
 
     after(s) {
-      // editor view: bind the hold-to-talk voice-note orb
+      // editor view: bind the hold-to-talk voice-note orb (release is handled window-level —
+      // the re-render replaces this element mid-hold, so element pointerup never fires on mouse)
       const noteOrb = document.querySelector('#ath-note-orb[data-ptt-note]');
       if (noteOrb) {
         noteOrb.addEventListener('pointerdown', e => { e.preventDefault(); window.Actions.athEditNoteStart(); });
-        noteOrb.addEventListener('pointerup', () => window.Actions.athEditNoteStop());
-        noteOrb.addEventListener('pointercancel', () => window.Actions.athEditNoteStop());
       }
       const deck = document.getElementById('swipe-deck');
       if (!deck) return;
@@ -238,14 +237,30 @@
 
   /* ---------- in-app editor actions ---------- */
 
-  let noteMr = null, noteChunks = [], noteStream = null, noteStart = 0;
+  let noteMr = null, noteChunks = [], noteStream = null, noteStart = 0, noteHoldReleased = false;
   function noteStopTracks() {
     if (noteStream) { noteStream.getTracks().forEach(t => { try { t.stop(); } catch (e) {} }); noteStream = null; }
   }
+  // hard-stop everything mic-related — safe to call from any state
+  function noteKill() {
+    if (noteMr) { try { noteMr.ondataavailable = null; noteMr.onstop = null; noteMr.stop(); } catch (e) {} noteMr = null; }
+    noteStopTracks();
+  }
+
+  // release is global: the orb gets replaced mid-hold by the rec-state re-render, so an
+  // element-bound pointerup never fires on mouse (no implicit capture) — listen on window.
+  ['pointerup', 'pointercancel'].forEach(ev => window.addEventListener(ev, () => {
+    noteHoldReleased = true;
+    if (window.Store && Store.get().athEditRec === 'rec') window.Actions.athEditNoteStop();
+  }));
+
+  // reset demo must never leave a mic hot
+  window.__resetHooks = window.__resetHooks || [];
+  window.__resetHooks.push(noteKill);
 
   window.Actions.athEditOpen = function (a) {
     const q = Store.get().inbox.find(x => x.id === a.id);
-    if (!q) return;
+    if (!q || q.status !== 'draft') return;   // a swipe may already be mid-flight on this card
     Store.set(s => { s.athEdit = { id: q.id, text: q.draft, note: null }; s.athEditRec = 'idle'; });
   };
 
@@ -260,7 +275,12 @@
       Actions.toast({ msg: 'Microphone unavailable in this browser.' });
       return;
     }
+    noteHoldReleased = false;   // set on pointerdown; a release before the mic resolves aborts cleanly
     navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+      if (noteHoldReleased || !Store.get().athEdit) {   // quick tap, or editor closed while permission was pending
+        stream.getTracks().forEach(t => { try { t.stop(); } catch (e) {} });
+        return;
+      }
       noteStream = stream; noteChunks = [];
       noteMr = new MediaRecorder(stream);
       noteMr.ondataavailable = e => { if (e.data && e.data.size) noteChunks.push(e.data); };
@@ -291,10 +311,16 @@
   };
 
   window.Actions.athEditSave = function () {
+    noteKill();   // saving while a note records must not leave the mic hot
     const s0 = Store.get();
     const ed = s0.athEdit;
     if (!ed) return;
     const q = s0.inbox.find(x => x.id === ed.id);
+    if (q && q.status !== 'draft') {   // handled elsewhere (swipe/desktop) while the editor was open
+      Store.set(s => { s.athEdit = null; s.athEditRec = 'idle'; });
+      Actions.toast({ msg: 'Already handled — this one went out from another screen.' });
+      return;
+    }
     const text = String(ed.text || '').trim();
     if (!q || !text) { Actions.toast({ msg: 'The reply can’t be empty.' }); return; }
     const edited = text !== q.draft;
@@ -310,15 +336,19 @@
   };
 
   window.Actions.athEditDelete = function () {
-    const ed = Store.get().athEdit;
+    noteKill();
+    const s0 = Store.get();
+    const ed = s0.athEdit;
     if (!ed) return;
+    const q = s0.inbox.find(x => x.id === ed.id);
+    const wasDraft = q && q.status === 'draft';
     Store.silent(s => { s.athEdit = null; s.athEditRec = 'idle'; });
-    Actions.decline({ id: ed.id });
-    Actions.toast({ msg: 'Deleted — no reply sent.' });
+    if (wasDraft) { Actions.decline({ id: ed.id }); Actions.toast({ msg: 'Deleted — no reply sent.' }); }
+    else { App.render(); Actions.toast({ msg: 'Already handled — this one went out from another screen.' }); }
   };
 
   window.Actions.athEditCancel = function () {
-    noteStopTracks();
+    noteKill();
     Store.set(s => { s.athEdit = null; s.athEditRec = 'idle'; });
   };
 })();

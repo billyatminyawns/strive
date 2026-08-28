@@ -21,14 +21,16 @@
   window.Actions.athDropApprove = function (a) {
     const d = (Store.get().draftDrops || []).find(x => x.id === a.id);
     if (!d) return;
+    if (window.Player && Player.state.id === a.id) Player.stop();
     if (window.Api) Api.ensureVoice(d.script);
     Store.set(s => {
       s.draftDrops = s.draftDrops.filter(x => x.id !== a.id);
-      s.scheduled.push({ id: 'sch-' + a.id, slot: 'NEXT OPEN 7:00 AM', title: d.title, sub: d.source + ' · approved from your phone', dur: UI.fmt(Player.estimate(d.script, 1)) });
+      s.scheduled.push({ id: 'sch-' + a.id, slot: 'QUEUED 7:00 AM', title: d.title, sub: d.source + ' · approved from your phone', dur: UI.fmt(Player.estimate(d.script, 1)), script: d.script });
     });
     Actions.toast({ msg: 'Approved — scheduled in your voice ✓' });
   };
   window.Actions.athDropPass = function (a) {
+    if (window.Player && Player.state.id === a.id) Player.stop();   // a rejected draft shouldn't keep talking
     Store.set(s => { s.draftDrops = s.draftDrops.filter(x => x.id !== a.id); });
     Actions.toast({ msg: 'Sent back — your Coach will take another angle.' });
   };

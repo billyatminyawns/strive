@@ -13,6 +13,7 @@ const SHELL = [
   './js/audio.js', './js/actions.js', './js/app.js',
   './js/fan/home.js', './js/fan/ask.js', './js/fan/discover.js', './js/fan/profile.js',
   './js/fan/lesson.js', './js/fan/library.js', './js/fan/you.js', './js/fan/tiers.js', './js/fan/invite.js',
+  './js/fan/live.js', './js/fan/notifs.js',
   './js/athlete/home.js', './js/athlete/approve.js', './js/athlete/capture.js',
   './js/athlete/studio.js', './js/athlete/profile.js',
   './js/studio/overview.js', './js/studio/inbox.js', './js/studio/content.js',

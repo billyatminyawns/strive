@@ -7,8 +7,23 @@
   window.Screens = window.Screens || {};
 
   /* module recording state (objectURLs don't survive reload; small takes persist as dataURL) */
-  let mr = null, chunks = [], micStream = null, recTimer = null, recStart = 0;
+  let mr = null, chunks = [], micStream = null, recTimer = null, recStart = 0, holdReleased = false;
   let take = { url: null, secs: 0, dataURL: null };
+
+  // release is global: athCapStart's re-render replaces the orb mid-hold, so an element-bound
+  // pointerup never fires on mouse (no implicit capture) — listen on window instead.
+  ['pointerup', 'pointercancel'].forEach(ev => window.addEventListener(ev, () => {
+    holdReleased = true;
+    if (window.Store && Store.get().athRec === 'rec') window.Actions.athCapStop();
+  }));
+
+  // reset demo must never leave a mic hot
+  window.__resetHooks = window.__resetHooks || [];
+  window.__resetHooks.push(() => {
+    clearInterval(recTimer);
+    if (mr) { try { mr.ondataavailable = null; mr.onstop = null; mr.stop(); } catch (e) {} mr = null; }
+    stopTracks();
+  });
 
   const DROP_PROMPT = { id: 'drop', title: 'Record a drop', src: 'YOUR CALL · YOU APPROVE BEFORE IT SHIPS', hint: 'Speak it — your Coach drafts it clean, you approve, fans hear it in your voice.' };
 
@@ -32,7 +47,11 @@
     tab: 'capture',
     render(s, params) {
       const dropMode = (params && params[0]) === 'drop' || s.captureSel === 'drop';
-      const sel = dropMode ? DROP_PROMPT : promptById(s.captureSel);
+      let sel = dropMode ? DROP_PROMPT : promptById(s.captureSel);
+      // a passed prompt can still resolve via promptById's fallback — never feature it again
+      if (sel.id !== 'drop' && (s.passedPrompts || []).includes(sel.id)) {
+        sel = Data.STORY_PROMPTS.find(p => !(s.passedPrompts || []).includes(p.id)) || DROP_PROMPT;
+      }
       const rec = s.athRec || 'idle'; // idle | rec | review
       const stories = s.stories || [];
 
@@ -135,12 +154,10 @@
     },
 
     after() {
+      // release/cancel are handled window-level (the rec-state re-render replaces this orb mid-hold)
       const orb = document.querySelector('#cap-orb[data-ptt]');
       if (!orb) return;
       orb.addEventListener('pointerdown', e => { e.preventDefault(); window.Actions.athCapStart(); });
-      orb.addEventListener('pointerup', () => window.Actions.athCapStop());
-      orb.addEventListener('pointercancel', () => window.Actions.athCapStop());
-      orb.addEventListener('pointerleave', () => { if (Store.get().athRec === 'rec') window.Actions.athCapStop(); });
     },
   };
 
@@ -162,11 +179,16 @@
 
   window.Actions.athCapStart = function () {
     if (Store.get().athRec === 'rec') return;
+    holdReleased = false;   // set on pointerdown; window pointerup flips it
     if (!navigator.mediaDevices || typeof MediaRecorder === 'undefined') {
       Actions.toast({ msg: 'Microphone unavailable in this browser.' });
       return;
     }
     navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+      if (holdReleased) {   // finger already lifted while the mic permission resolved
+        stream.getTracks().forEach(t => { try { t.stop(); } catch (e) {} });
+        return;
+      }
       micStream = stream;
       chunks = [];
       mr = new MediaRecorder(stream);

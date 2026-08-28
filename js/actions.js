@@ -8,7 +8,7 @@
   function textFor(id) {
     const s = S();
     if (id.startsWith('drop-')) { const d = s.drops.find(d => d.id === id); return d && { text: d.script, title: d.title }; }
-    if (id.startsWith('sch-')) { const d = s.scheduled.find(x => x.id === id); return d && { text: d.title + '. ' + d.sub, title: d.title }; }
+    if (id.startsWith('sch-')) { const d = s.scheduled.find(x => x.id === id); return d && { text: d.script || (d.title + '. ' + d.sub), title: d.title }; }
     if (id === 'sample') return { text: s.sample.text, title: 'Voice sample' };
     if (id === 'bio') return { text: Data.BIO, title: 'Angela — in her own voice' };
     if (id.startsWith('dd-')) { const d = (s.draftDrops || []).find(x => x.id === id); return d && { text: d.script, title: d.title }; }
@@ -51,6 +51,7 @@
     resetDemo() {
       epoch++;                       // invalidate any in-flight deferred chat callbacks
       if (window.Player) Player.stop();
+      (window.__resetHooks || []).forEach(fn => { try { fn(); } catch (e) {} });   // e.g. stop hot mics
       Store.reset();
     },
     unlock() {
@@ -61,7 +62,11 @@
     /* ---------- playback ---------- */
     togglePlay(a) {
       const p = textFor(a.id);
-      if (!p) return;
+      if (!p) {
+        // source item may be gone (e.g. a drafted drop approved mid-play) — still allow pause/resume
+        if (window.Player && Player.state.id === a.id) Player.toggle({ id: a.id, text: Player.state.text || '', title: Player.state.title });
+        return;
+      }
       Player.toggle({
         id: a.id, text: p.text, title: p.title,
         onEnd: (id) => {
@@ -154,7 +159,9 @@
             const item = st.inbox.find(x => x.id === qid);
             if (!item) return;
             item.drafting = false;
-            if (text && item.status === 'draft' && !item.draftEdited) {
+            // don't stomp the draft while Angela has it open in the phone editor
+            const editing = st.athEdit && st.athEdit.id === qid;
+            if (text && item.status === 'draft' && !item.draftEdited && !editing) {
               item.draft = text;
               item.aiDrafted = true;
             }
