@@ -10,6 +10,8 @@
     if (id.startsWith('drop-')) { const d = s.drops.find(d => d.id === id); return d && { text: d.script, title: d.title }; }
     if (id.startsWith('sch-')) { const d = s.scheduled.find(x => x.id === id); return d && { text: d.title + '. ' + d.sub, title: d.title }; }
     if (id === 'sample') return { text: s.sample.text, title: 'Voice sample' };
+    if (id === 'bio') return { text: Data.BIO, title: 'Angela — in her own voice' };
+    if (id.startsWith('dd-')) { const d = (s.draftDrops || []).find(x => x.id === id); return d && { text: d.script, title: d.title }; }
     if (id.startsWith('draft:')) { const q = s.inbox.find(q => q.id === id.slice(6)); return q && { text: q.draft, title: 'Reply to ' + q.from.split(' ')[0] }; }
     const msg = s.chat.find(m => m.id === id);
     if (msg) return { text: msg.text, title: 'Voice reply from Angela' };

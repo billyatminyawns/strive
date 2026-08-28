@@ -60,7 +60,7 @@
             <div style="display:flex;flex-direction:column;gap:11px">
               ${weekRow('Replies approved', '12')}
               ${weekRow('Stories captured', String(storiesCaptured))}
-              ${weekRow('Time in studio', '41 min')}
+              ${weekRow('Drops shipped', '5')}
             </div>
             <div style="font-size:11.5px;color:var(--faint);line-height:1.5;border-top:1px solid var(--line);padding-top:11px">Angela runs it all in about an hour a week.</div>
           </div>

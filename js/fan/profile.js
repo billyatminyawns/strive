@@ -83,6 +83,33 @@
 
         <div style="padding:14px 18px 10px;display:flex;flex-direction:column;gap:12px">
 
+          <!-- "the Wikipedia in her own voice" — first thing a new fan hears -->
+          <div class="gradcard" style="padding:13px 14px;display:flex;flex-direction:column;gap:9px">
+            <span class="k-label" style="font-size:9.5px;color:var(--mint)">WHO IS ANGELA · IN HER OWN VOICE</span>
+            <div style="display:flex;align-items:center;gap:11px">
+              ${playBtn({ id: 'bio' }, 40)}
+              <div style="flex:1;min-width:0">${wave('bio', 20, 20)}</div>
+              <span style="font-size:10.5px;color:var(--dim2);flex-shrink:0" data-dur-for="bio">${fmt(Player.estimate(Data.BIO, 1))}</span>
+            </div>
+            <div style="font-size:11px;color:var(--sub);line-height:1.55">"${esc(Data.BIO.slice(0, 96))}…" — hear the rest, or just say hi in Ask.</div>
+          </div>
+
+          ${(() => {
+            const picks = s.drops.filter(d => d.pinned);
+            return picks.length ? `<div style="display:flex;flex-direction:column;gap:8px">
+              <span class="k-label" style="font-size:10px;color:var(--dim2)">ANGELA'S PICKS · PINNED BY HER</span>
+              ${picks.map(d => `
+                <div class="card2" style="border-color:var(--chip-line);border-radius:14px;padding:11px 12px;display:flex;align-items:center;gap:11px">
+                  ${playBtn({ id: d.id }, 34)}
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:13px;font-weight:700">${esc(d.title)}</div>
+                    <div style="font-size:11px;color:var(--dim2)">${d.listens.toLocaleString('en-US')} listens · <span data-dur-for="${d.id}">${fmt(Player.estimate(d.script, 1))}</span></div>
+                  </div>
+                  <span style="font-size:9.5px;font-weight:800;color:var(--mint);border:1px solid var(--chip-line);border-radius:999px;padding:3px 8px;flex-shrink:0">PINNED</span>
+                </div>`).join('')}
+            </div>` : '';
+          })()}
+
           <div style="display:flex;align-items:center;gap:12px">
             <button style="flex:1;background:var(--mint);color:var(--ink);border:none;border-radius:12px;padding:13px 0;font-size:14.5px;font-weight:800"
               data-action="nav" data-arg="${arg('#/fan/tiers')}">Subscribe · from $9.99/mo</button>

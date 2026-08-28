@@ -21,6 +21,16 @@
     </div>`;
   }
 
+  // pin/unpin a drop to the public profile ("Angela's picks")
+  window.Actions.athPinDrop = function (a) {
+    let nowPinned = false;
+    Store.set(s => {
+      const d = s.drops.find(x => x.id === a.id);
+      if (d) { d.pinned = !d.pinned; nowPinned = d.pinned; }
+    });
+    Actions.toast({ msg: nowPinned ? 'Pinned to your public profile ✓' : 'Unpinned.' });
+  };
+
   Screens['athlete/studio'] = {
     tab: 'studio',
     render(s) {
@@ -36,7 +46,7 @@
           <div class="card" style="padding:16px;display:flex;flex-direction:column;gap:14px">
             <div>
               ${kicker('GUARDRAILS')}
-              <div style="font-size:11.5px;color:var(--dim2);margin-top:4px;line-height:1.5">Angela's voice never says anything she hasn't written or approved.</div>
+              <div style="font-size:11.5px;color:var(--dim2);margin-top:4px;line-height:1.5">Your Coach never says anything you haven't written or approved.</div>
             </div>
             ${guardRow('Approve every reply before it sends', 'Required for personal replies', 'review', s.guards.review)}
             ${guardRow('Stick to approved topics', 'Hockey · leadership · career · training', 'topics', s.guards.topics)}
@@ -57,13 +67,19 @@
           </div>
 
           <div class="card" style="padding:16px;display:flex;flex-direction:column;gap:13px">
-            ${kicker("THIS WEEK'S DROPS")}
+            <div style="display:flex;justify-content:space-between;align-items:baseline">
+              ${kicker('YOUR CONTENT · BY PERFORMANCE')}
+              <span style="font-size:10px;color:var(--dim2)">pin your best to your profile</span>
+            </div>
             <div style="display:flex;flex-direction:column;gap:12px">
-              ${s.drops.slice(0, 3).map(d => `
+              ${s.drops.slice().sort((a, b) => b.listens - a.listens).slice(0, 3).map(d => `
                 <div>
-                  <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;gap:12px">
+                  <div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;gap:10px">
                     <span style="font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.title)}</span>
-                    <span style="color:var(--dim2);flex-shrink:0">${d.listens.toLocaleString('en-US')} listens</span>
+                    <span style="color:var(--dim2);flex-shrink:0;font-size:11.5px">${d.listens.toLocaleString('en-US')} listens</span>
+                    <button data-action="athPinDrop" data-arg="${arg({ id: d.id })}" aria-label="${d.pinned ? 'Unpin from profile' : 'Pin to profile'}"
+                      style="flex-shrink:0;background:${d.pinned ? 'var(--chip-bg)' : 'none'};border:1px solid ${d.pinned ? 'var(--chip-line)' : 'var(--line2)'};
+                        color:${d.pinned ? 'var(--mint)' : 'var(--dim2)'};border-radius:999px;padding:4px 10px;font-size:10px;font-weight:800">${d.pinned ? 'PINNED ✓' : 'PIN'}</button>
                   </div>
                   <div class="progress" style="margin-top:6px"><div style="width:${d.completion}%"></div></div>
                 </div>`).join('')}
@@ -71,16 +87,17 @@
           </div>
 
           <div class="gradcard" style="padding:16px;display:flex;flex-direction:column;gap:12px">
-            ${kicker('VOICE MODEL')}
+            ${kicker('YOUR COACH · VOICE MODEL')}
             <div style="display:flex;align-items:center;gap:11px">
               ${ava(Data.IMG.head, 38)}
               <div style="flex:1;min-width:0">
-                <div style="font-size:15px;font-weight:800">Angela — Studio Voice</div>
+                <div style="font-size:15px;font-weight:800">Coach Angela</div>
+                <div style="font-size:10.5px;color:var(--dim2);margin-top:1px">your digital twin — fans hear you, trained by you</div>
               </div>
               <span style="font-size:9px;letter-spacing:0.08em;font-weight:800;color:var(--mint);border:1px solid var(--chip-line);border-radius:999px;padding:4px 8px;flex-shrink:0">VOICE BY WELLSAID</span>
             </div>
             <div>${wave(null, 34, 26, '#3C463E', 4)}</div>
-            <div style="font-size:11.5px;color:var(--sub);line-height:1.5">Manage source lines and pronunciation on desktop.</div>
+            <div style="font-size:11.5px;color:var(--sub);line-height:1.5">Source lines & pronunciation live in the full studio.</div>
             <div style="border-top:1px solid #273029;padding-top:11px;font-size:10.5px;color:var(--faint);line-height:1.5">Every clip watermarked · revoke any time — it's yours.</div>
           </div>
 

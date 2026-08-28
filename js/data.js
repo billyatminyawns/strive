@@ -22,7 +22,7 @@
     },
     {
       id: 'drop-3', title: 'Gold medal morning', when: 'Feb 17', listens: 12388, completion: 95,
-      why: 'Most replayed this month',
+      why: 'Most replayed this month', pinned: true,
       script: "People ask what the morning of the gold medal game felt like. Honestly? Quiet. We'd done the loud part for four years. I remember tying my skates and thinking — nothing new today. Same tape job, same warm-up, same first shift plan. Big moments don't want more from you. They want exactly what you've already built, delivered on time.",
     },
   ];
@@ -85,6 +85,32 @@
   // interest picker pool — general-first (universal topics), sport jargon last
   const INTEREST_POOL = ['Mindset', 'Nutrition', 'Recovery', 'Training', 'Stories', 'Leadership', 'Culture', 'Hockey IQ'];
 
+  // voice bio — "the Wikipedia in her own voice" on the athlete's public profile (pre-rendered clip)
+  const BIO = "Hey, I'm Angela. Four Olympics, a gold medal from Nagano, and a seat in the Hockey Hall of Fame — but honestly, defense taught me more than the podiums did. These days I serve on boards, work across the Olympic movement, and geek out on mindset, nutrition, and leadership. Everything you hear in here, I wrote or approved. Come say hi.";
+
+  // AI-drafted drops awaiting the athlete's approval — the "approve 20 in one sitting" model:
+  // the platform drafts from everything she's said; she reviews, she never has to create.
+  const DRAFT_DROPS = [
+    {
+      id: 'dd-1', title: 'Why I loved the 4 AM practices', source: 'Drafted from your 2019 podcast interview',
+      script: "Everyone hates the 4 AM practice story until they need it. Empty rink, cold air, nobody watching — that's where you find out if you love the work or the applause. I learned to love the work. The applause got loud later on its own.",
+    },
+    {
+      id: 'dd-2', title: 'Reading a locker room in 60 seconds', source: 'Drafted from your leadership keynote',
+      script: "Walk in and count who's looking at the floor. A quiet room isn't a focused room — focused rooms hum. If the floor-lookers outnumber the hummers, your first job isn't tactics. It's getting one honest laugh before puck drop.",
+    },
+    {
+      id: 'dd-3', title: "The gear superstition I'll admit to", source: "You mentioned this once — fans never heard the full story",
+      script: "Left skate first, always. Not because it works — because deciding it works gave my brain one less thing to negotiate at six PM on game day. Superstitions aren't magic. They're pre-made decisions. Make yours boring, and keep them.",
+    },
+  ];
+
+  // knowledge coverage by bucket — drives which capture prompts get pushed ("2% covered → ask about it")
+  const COVERAGE = [
+    { bucket: 'Training', pct: 95 }, { bucket: 'Mindset', pct: 85 }, { bucket: 'Nutrition', pct: 70 },
+    { bucket: 'Leadership', pct: 60 }, { bucket: 'Recovery', pct: 25 }, { bucket: 'Culture', pct: 10 },
+  ];
+
   // sensitive topics — auto-declined politely when the guardrail is on.
   // WORDS match on token boundaries (so "issue"/"pursue" don't trip "sue"); PREFIX matches morphological variants.
   const SENSITIVE_WORDS = ['bet', 'bets', 'betting', 'parlay', 'parlays', 'odds', 'gamble', 'gambling', 'wager', 'wagers',
@@ -143,13 +169,14 @@
 
   // ---------- capture: story prompts (from the CI onboarding gap report — "6 stories she's never told publicly") ----------
   const STORY_PROMPTS = [
-    { id: 'sp-nagano', title: 'The night before Nagano', hint: 'From your gap report — fans have never heard how you actually slept (or didn’t).' },
-    { id: 'sp-skates', title: 'Your first pair of skates', hint: 'Origin stories index 3× better than highlights. Where did they come from?' },
-    { id: 'sp-cut', title: 'The hardest cut you survived', hint: 'You reference this in Q&As but the full story isn’t in the knowledge base yet.' },
-    { id: 'sp-harvard', title: 'What Harvard taught you about hockey', hint: 'Bridges your two worlds — top-requested topic among Inner Circle fans.' },
-    { id: 'sp-mentor', title: 'The mentor who changed everything', hint: 'The twin has no source material on your early coaches.' },
-    { id: 'sp-ritual', title: 'Your weirdest pre-game ritual', hint: 'Light one — fans love these, and it humanizes the answers.' },
-    { id: 'sp-class', title: 'Pitch your next masterclass', hint: 'The class you’ve always wanted to teach — name it and talk through lesson one. We build the outline.' },
+    { id: 'sp-nagano', title: 'The night before Nagano', src: 'GAP REPORT · MINDSET', hint: 'From your gap report — fans have never heard how you actually slept (or didn’t).' },
+    { id: 'sp-skates', title: 'Your first pair of skates', src: 'GAP REPORT · YOUR STORY', hint: 'Origin stories index 3× better than highlights. Where did they come from?' },
+    { id: 'sp-cut', title: 'The hardest cut you survived', src: 'TRENDING · 14 FANS ASKED THIS WEEK', hint: 'You reference this in Q&As but the full story isn’t in the knowledge base yet.' },
+    { id: 'sp-harvard', title: 'What Harvard taught you about hockey', src: 'TOP REQUEST · INNER CIRCLE', hint: 'Bridges your two worlds — top-requested topic among Inner Circle fans.' },
+    { id: 'sp-mentor', title: 'The mentor who changed everything', src: 'GAP REPORT · CULTURE 10% COVERED', hint: 'Your Coach has no source material on your early coaches.' },
+    { id: 'sp-ritual', title: 'Your weirdest pre-game ritual', src: 'NUGGET · YOU MENTIONED IT ONCE, IN 2010', hint: 'Light one — fans love these, and it humanizes the answers.' },
+    { id: 'sp-class', title: 'Pitch your next masterclass', src: 'YOUR CALL', hint: 'The class you’ve always wanted to teach — name it and talk through lesson one. We build the outline.' },
+    { id: 'sp-free', title: 'Anything on your mind', src: 'YOUR CALL', hint: 'No prompt, no agenda — killer game last night, a thought on the bus, whatever you want logged.' },
   ];
 
   // ---------- live AMA (monthly All-Access event) ----------
@@ -178,7 +205,7 @@
   // ---------- seed state ----------
   function seed() {
     return {
-      __v: 4,
+      __v: 5,
       unlocked: false,              // invite gate passed?
       fan: {
         name: 'Marcus', mono: 'M', color: '#CBA9F7',
@@ -216,10 +243,13 @@
       sample: { text: 'Big game tonight — remember, poise beats panic.', ready: false },
       stats: {
         members: 12480, membersDelta: '+8.2% this month',
-        revenue: '$38.2K', revenueDelta: '+12% this month',
-        answered: '94%', answeredNote: 'median reply 9h',
+        revenue: '$38.2K', revenueDelta: '+12% this month',   // shown on You + Studio, never the front page
+        answered: '94%', answeredNote: 'of fan questions',
         listen: '4:37', listenDelta: '+0:41 vs June',
+        reply: '9h', replyNote: 'median wait for fans',
       },
+      draftDrops: DRAFT_DROPS.map(d => ({ ...d })),   // AI-drafted, awaiting her approval
+      passedPrompts: [],                              // capture prompts she said "don't ask" to
       activity: [],                     // studio activity feed: {t, text}
       billingAnnual: false,
       trialTier: null,                  // set when fan starts a trial from tiers screen
@@ -253,7 +283,7 @@
   }
 
   window.Data = {
-    IMG, DROPS, SCHEDULED, COURSE, KB, SENSITIVE_WORDS, SENSITIVE_PREFIX, DECLINE_TEXT, ATHLETES, STORY_PROMPTS, AMA, INTEREST_POOL,
+    IMG, DROPS, SCHEDULED, COURSE, KB, SENSITIVE_WORDS, SENSITIVE_PREFIX, DECLINE_TEXT, ATHLETES, STORY_PROMPTS, AMA, INTEREST_POOL, BIO, DRAFT_DROPS, COVERAGE,
     seed, isSensitive, findKb, draftFor, norm,
   };
 })();

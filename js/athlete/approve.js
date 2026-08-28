@@ -51,9 +51,64 @@
     </div>`;
   }
 
+  /* in-app editor — typing edits + a voice note the AI weaves in (no desktop required) */
+  function editor(s) {
+    const ed = s.athEdit;
+    const q = s.inbox.find(x => x.id === ed.id);
+    if (!q) return '';
+    const rec = s.athEditRec || 'idle';
+    return `<div class="p-scroll" style="padding:64px 18px 8px">
+      <div style="display:flex;flex-direction:column;gap:13px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <button style="background:none;border:none;padding:0;display:flex" data-action="athEditCancel" aria-label="Back">${UI.icon.back}</button>
+          <div style="font-size:18px;font-weight:800">Edit reply</div>
+        </div>
+
+        <div class="card2" style="padding:12px 14px;display:flex;flex-direction:column;gap:4px">
+          <span class="k-label" style="font-size:9.5px;color:var(--dim2)">${esc(q.from.toUpperCase())} ASKED</span>
+          <div style="font-size:13.5px;font-weight:700;line-height:1.45">"${esc(q.text)}"</div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <span class="k-label" style="font-size:10px;color:var(--lav)">YOUR REPLY — TYPE OR TALK, SHIPS IN YOUR VOICE</span>
+          <textarea class="field-dark" id="ath-edit-text" data-keep="ath-edit" data-input-action="athEditTyping"
+            style="width:100%;min-height:150px;resize:vertical;line-height:1.55;font-size:13px;border-radius:12px;padding:12px 13px">${esc(ed.text)}</textarea>
+        </div>
+
+        ${ed.note
+          ? `<div class="card2" style="border-color:var(--chip-line);padding:11px 13px;display:flex;align-items:center;gap:10px">
+              <span style="font-size:16px">🎙</span>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:12.5px;font-weight:700">Voice note attached · ${fmt(ed.note.secs)}</div>
+                <div style="font-size:10.5px;color:var(--dim2);margin-top:1px">Your Coach weaves it in before this ships.</div>
+              </div>
+              <button class="btn-quiet" style="font-size:11px" data-action="athEditNoteDrop">remove</button>
+            </div>`
+          : `<div class="card2" style="padding:11px 13px;display:flex;align-items:center;gap:11px">
+              ${rec === 'rec'
+                ? `<button id="ath-note-orb" data-action="athEditNoteStop"
+                    style="width:44px;height:44px;border-radius:50%;background:var(--red);border:none;display:flex;align-items:center;justify-content:center;animation:livepulse 1.4s infinite;flex-shrink:0">${UI.icon.mic('#141614', 16)}</button>`
+                : `<button id="ath-note-orb" data-ptt-note="1"
+                    style="width:44px;height:44px;border-radius:50%;background:var(--chip-bg);border:1.5px solid var(--chip-line);display:flex;align-items:center;justify-content:center;flex-shrink:0;touch-action:none">${UI.icon.mic('var(--mint)', 16)}</button>`}
+              <div style="flex:1;min-width:0">
+                <div style="font-size:12.5px;font-weight:700">${rec === 'rec' ? 'Recording — release to attach' : "Don't feel like typing?"}</div>
+                <div style="font-size:10.5px;color:var(--dim2);margin-top:1px">Hold and say what to change — "mention I got cut at sixteen too" — the AI folds it in.</div>
+              </div>
+            </div>`}
+
+        <div style="display:flex;gap:9px;margin-top:2px">
+          <button class="btn btn-mint" style="flex:1;padding:13px 0" data-action="athEditSave">Save & approve →</button>
+          <button class="btn btn-ghost" style="padding:13px 16px" data-action="athEditCancel">Cancel</button>
+        </div>
+        <button style="background:none;border:none;padding:6px 0 12px;font-size:12px;font-weight:700;color:var(--papaya)" data-action="athEditDelete">Delete — I don't want to answer this one</button>
+      </div>
+    </div>`;
+  }
+
   Screens['athlete/approve'] = {
     tab: 'approve',
     render(s) {
+      if (s.athEdit) return editor(s);
       const queue = s.inbox.filter(q => q.status === 'draft');
       const done = s.athApproved || 0;
 
@@ -64,7 +119,7 @@
               ${UI.icon.check('var(--mint)', 34)}
             </div>
             <div style="font-size:22px;font-weight:800">Queue clear</div>
-            <div style="font-size:13px;color:var(--sub);line-height:1.6;max-width:280px">Every reply that needed your voice is out the door${done ? ` — ${done} approved this session` : ''}. ${s.inboxExtra} routine ones are drafted for desktop review.</div>
+            <div style="font-size:13px;color:var(--sub);line-height:1.6;max-width:280px">Every reply that needed your voice is out the door${done ? ` — ${done} approved this session` : ''}. ${s.inboxExtra} routine ones are drafted — review them here whenever.</div>
             <button class="btn btn-mint" style="margin-top:8px" data-action="nav" data-arg="${arg('#/athlete/capture')}">Capture a story instead</button>
             <button class="btn-quiet" style="font-size:12px" data-action="nav" data-arg="${arg('#/athlete/home')}">Back to Today</button>
           </div>
@@ -74,25 +129,42 @@
       return `<div style="flex:1;display:flex;flex-direction:column;padding:64px 18px 10px;min-height:0">
         <div style="display:flex;align-items:baseline;justify-content:space-between;padding:4px 2px 12px">
           <div style="font-size:20px;font-weight:800">Approve</div>
-          <div style="font-size:11px;color:var(--dim2)">${queue.length} waiting · ${s.inboxExtra} more on desktop</div>
+          <div style="font-size:11px;color:var(--dim2)">${queue.length} waiting · ${s.inboxExtra} more drafted</div>
         </div>
 
         <div style="position:relative;flex:1;min-height:0;max-height:520px" id="swipe-deck">
           ${queue.slice(0, 3).map((q, i) => card(q, i, queue.length)).reverse().join('')}
         </div>
 
-        <div style="display:flex;align-items:center;justify-content:center;gap:26px;padding:16px 0 6px">
-          <button data-action="athSwipePass" data-arg="${arg({ id: queue[0].id })}" aria-label="Pass"
-            style="width:54px;height:54px;border-radius:50%;background:none;border:1.5px solid #3A2E28;color:var(--papaya);font-size:20px;font-weight:800;display:flex;align-items:center;justify-content:center">✕</button>
-          <button data-action="athSwipeApprove" data-arg="${arg({ id: queue[0].id })}" aria-label="Approve and send"
-            style="width:66px;height:66px;border-radius:50%;background:var(--mint);border:none;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 30px rgba(124,226,165,0.3)">${UI.icon.check('var(--ink)', 24)}</button>
-          <button class="btn-quiet" data-action="reviewInbox" data-arg="${arg({ id: queue[0].id })}"
-            style="width:54px;font-size:10.5px;line-height:1.3;color:var(--dim)">edit on desktop</button>
+        <div style="display:flex;align-items:flex-start;justify-content:center;gap:26px;padding:16px 0 6px">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:5px">
+            <button data-action="athSwipePass" data-arg="${arg({ id: queue[0].id })}" aria-label="Delete — no reply sent"
+              style="width:54px;height:54px;border-radius:50%;background:none;border:1.5px solid #3A2E28;color:var(--papaya);font-size:20px;font-weight:800;display:flex;align-items:center;justify-content:center">✕</button>
+            <span style="font-size:10px;color:var(--dim)">delete</span>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:5px">
+            <button data-action="athEditOpen" data-arg="${arg({ id: queue[0].id })}" aria-label="Edit this reply"
+              style="width:54px;height:54px;border-radius:50%;background:none;border:1.5px solid var(--line2);color:#D7DDD8;display:flex;align-items:center;justify-content:center">
+              <svg width="18" height="18" viewBox="0 0 18 18"><path d="M2.5 13.2l-.7 3 3-.7 9.4-9.4a1.6 1.6 0 00-2.3-2.3L2.5 13.2z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>
+            <span style="font-size:10px;color:var(--dim)">edit</span>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:5px">
+            <button data-action="athSwipeApprove" data-arg="${arg({ id: queue[0].id })}" aria-label="Approve and send"
+              style="width:66px;height:66px;border-radius:50%;background:var(--mint);border:none;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 30px rgba(124,226,165,0.3)">${UI.icon.check('var(--ink)', 24)}</button>
+            <span style="font-size:10px;color:var(--dim)">approve</span>
+          </div>
         </div>
       </div>`;
     },
 
     after(s) {
+      // editor view: bind the hold-to-talk voice-note orb
+      const noteOrb = document.querySelector('#ath-note-orb[data-ptt-note]');
+      if (noteOrb) {
+        noteOrb.addEventListener('pointerdown', e => { e.preventDefault(); window.Actions.athEditNoteStart(); });
+        noteOrb.addEventListener('pointerup', () => window.Actions.athEditNoteStop());
+        noteOrb.addEventListener('pointercancel', () => window.Actions.athEditNoteStop());
+      }
       const deck = document.getElementById('swipe-deck');
       if (!deck) return;
       const cardEl = deck.querySelector('[data-swipe]:not([data-swipe=""])');
@@ -163,4 +235,90 @@
 
   window.Actions.athSwipeApprove = function (a) { Actions.athFly(a.id, 1); };
   window.Actions.athSwipePass = function (a) { Actions.athFly(a.id, -1); };
+
+  /* ---------- in-app editor actions ---------- */
+
+  let noteMr = null, noteChunks = [], noteStream = null, noteStart = 0;
+  function noteStopTracks() {
+    if (noteStream) { noteStream.getTracks().forEach(t => { try { t.stop(); } catch (e) {} }); noteStream = null; }
+  }
+
+  window.Actions.athEditOpen = function (a) {
+    const q = Store.get().inbox.find(x => x.id === a.id);
+    if (!q) return;
+    Store.set(s => { s.athEdit = { id: q.id, text: q.draft, note: null }; s.athEditRec = 'idle'; });
+  };
+
+  // keep typing in module state so note-attach re-renders don't lose edits
+  window.Actions.athEditTyping = function (value) {
+    Store.silent(s => { if (s.athEdit) s.athEdit.text = value; });
+  };
+
+  window.Actions.athEditNoteStart = function () {
+    if (Store.get().athEditRec === 'rec') return;
+    if (!navigator.mediaDevices || typeof MediaRecorder === 'undefined') {
+      Actions.toast({ msg: 'Microphone unavailable in this browser.' });
+      return;
+    }
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+      noteStream = stream; noteChunks = [];
+      noteMr = new MediaRecorder(stream);
+      noteMr.ondataavailable = e => { if (e.data && e.data.size) noteChunks.push(e.data); };
+      noteMr.start();
+      noteStart = performance.now();
+      Store.set(s => { s.athEditRec = 'rec'; });
+    }).catch(() => Actions.toast({ msg: 'Microphone blocked — allow mic access to add a note.' }));
+  };
+
+  window.Actions.athEditNoteStop = function () {
+    if (Store.get().athEditRec !== 'rec' || !noteMr) return;
+    const secs = Math.max(1, Math.round((performance.now() - noteStart) / 1000));
+    const rec = noteMr;
+    noteMr = null;
+    rec.onstop = () => {
+      noteStopTracks();
+      Store.set(s => {
+        if (s.athEdit) s.athEdit.note = { secs };
+        s.athEditRec = 'idle';
+      });
+      Actions.toast({ msg: 'Note attached — it ships woven into the reply ✓' });
+    };
+    try { rec.stop(); } catch (e) { noteStopTracks(); Store.set(s => { s.athEditRec = 'idle'; }); }
+  };
+
+  window.Actions.athEditNoteDrop = function () {
+    Store.set(s => { if (s.athEdit) s.athEdit.note = null; });
+  };
+
+  window.Actions.athEditSave = function () {
+    const s0 = Store.get();
+    const ed = s0.athEdit;
+    if (!ed) return;
+    const q = s0.inbox.find(x => x.id === ed.id);
+    const text = String(ed.text || '').trim();
+    if (!q || !text) { Actions.toast({ msg: 'The reply can’t be empty.' }); return; }
+    const edited = text !== q.draft;
+    const noted = !!ed.note;
+    Store.silent(s => {
+      const qq = s.inbox.find(x => x.id === ed.id);
+      if (qq) qq.draft = text;
+      s.athApproved = (s.athApproved || 0) + 1;
+      s.athEdit = null; s.athEditRec = 'idle';
+    });
+    Actions.approve({ id: ed.id });   // sends, learns, renders voice, re-renders
+    Actions.toast({ msg: noted ? 'Sent with your note woven in ✓' : edited ? 'Sent — edited on your phone ✓' : 'Sent ✓' });
+  };
+
+  window.Actions.athEditDelete = function () {
+    const ed = Store.get().athEdit;
+    if (!ed) return;
+    Store.silent(s => { s.athEdit = null; s.athEditRec = 'idle'; });
+    Actions.decline({ id: ed.id });
+    Actions.toast({ msg: 'Deleted — no reply sent.' });
+  };
+
+  window.Actions.athEditCancel = function () {
+    noteStopTracks();
+    Store.set(s => { s.athEdit = null; s.athEditRec = 'idle'; });
+  };
 })();

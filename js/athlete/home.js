@@ -17,6 +17,22 @@
     </div>`;
   }
 
+  /* drafted-drop decisions — approve schedules it (voice pre-rendered), redraft sends it back */
+  window.Actions.athDropApprove = function (a) {
+    const d = (Store.get().draftDrops || []).find(x => x.id === a.id);
+    if (!d) return;
+    if (window.Api) Api.ensureVoice(d.script);
+    Store.set(s => {
+      s.draftDrops = s.draftDrops.filter(x => x.id !== a.id);
+      s.scheduled.push({ id: 'sch-' + a.id, slot: 'NEXT OPEN 7:00 AM', title: d.title, sub: d.source + ' · approved from your phone', dur: UI.fmt(Player.estimate(d.script, 1)) });
+    });
+    Actions.toast({ msg: 'Approved — scheduled in your voice ✓' });
+  };
+  window.Actions.athDropPass = function (a) {
+    Store.set(s => { s.draftDrops = s.draftDrops.filter(x => x.id !== a.id); });
+    Actions.toast({ msg: 'Sent back — your Coach will take another angle.' });
+  };
+
   Screens['athlete/home'] = {
     tab: 'home',
     render(s) {
@@ -63,12 +79,35 @@
             <button class="btn btn-mint-line" style="flex-shrink:0;font-size:12px;padding:10px 14px;white-space:nowrap" data-action="nav" data-arg="${arg('#/fan/live')}">Preview room</button>
           </div>
 
+          <!-- fan-engagement metrics only up front; revenue lives on You + Studio (small numbers demotivate) -->
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
             ${statTile(s.stats.members.toLocaleString(), 'MEMBERS', s.stats.membersDelta)}
-            ${statTile(s.stats.revenue, 'REVENUE', s.stats.revenueDelta)}
             ${statTile(s.stats.answered, 'ANSWERED', s.stats.answeredNote)}
             ${statTile(s.stats.listen, 'AVG LISTEN', s.stats.listenDelta)}
+            ${statTile(s.stats.reply, 'MEDIAN REPLY', s.stats.replyNote)}
           </div>
+
+          ${(s.draftDrops || []).length ? `<div style="display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;justify-content:space-between;align-items:baseline">
+              <span class="k-label" style="font-size:10px;color:var(--lav)">DRAFTED FOR YOU</span>
+              <span style="font-size:10.5px;color:var(--dim2)">approve in one sitting — you never have to create</span>
+            </div>
+            ${s.draftDrops.map(d => `
+              <div class="card2" style="padding:12px 13px;display:flex;flex-direction:column;gap:9px">
+                <div style="display:flex;align-items:center;gap:10px">
+                  ${UI.playBtn({ id: d.id }, 32)}
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.title)}</div>
+                    <div style="font-size:10.5px;color:var(--dim2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.source)}</div>
+                  </div>
+                  <span style="font-size:10.5px;color:var(--dim2);flex-shrink:0" data-dur-for="${d.id}">${UI.fmt(Player.estimate(d.script, 1))}</span>
+                </div>
+                <div style="display:flex;gap:8px">
+                  <button class="btn btn-mint" style="flex:1;padding:9px 0;font-size:12px" data-action="athDropApprove" data-arg="${arg({ id: d.id })}">Approve → schedule</button>
+                  <button class="btn btn-ghost" style="padding:9px 14px;font-size:12px" data-action="athDropPass" data-arg="${arg({ id: d.id })}">Redraft</button>
+                </div>
+              </div>`).join('')}
+          </div>` : ''}
 
           ${next ? `<div style="display:flex;flex-direction:column;gap:8px">
             <span class="k-label" style="font-size:10px;color:var(--lav)">SCHEDULE</span>
@@ -82,12 +121,8 @@
             </div>
           </div>` : ''}
 
-          <div style="display:flex;gap:10px">
-            <button class="btn btn-ghost" style="flex:1;display:flex;align-items:center;justify-content:center;gap:7px;white-space:nowrap;font-size:12px;padding:11px 8px" data-action="nav" data-arg="${arg('#/athlete/capture')}">
-              ${icon.mic('#D7DDD8', 14)} Capture a story</button>
-            <button class="btn btn-mint-line" style="flex:1;display:flex;align-items:center;justify-content:center;gap:7px;white-space:nowrap;font-size:12px;padding:11px 8px" data-action="nav" data-arg="${arg('#/athlete/capture/drop')}">
-              <span style="width:9px;height:9px;border-radius:50%;background:var(--mint);flex-shrink:0"></span> Record today's drop</button>
-          </div>
+          <button class="btn btn-ghost" style="display:flex;align-items:center;justify-content:center;gap:7px;white-space:nowrap;font-size:12px;padding:11px 8px" data-action="nav" data-arg="${arg('#/athlete/capture')}">
+            ${icon.mic('#D7DDD8', 14)} Capture — teach your Coach something new</button>
 
           ${drafts.length ? `<div style="display:flex;flex-direction:column;gap:10px">
             <div style="font-size:13px;font-weight:800;color:#B9C0BA">Latest from fans</div>

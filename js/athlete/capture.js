@@ -10,7 +10,7 @@
   let mr = null, chunks = [], micStream = null, recTimer = null, recStart = 0;
   let take = { url: null, secs: 0, dataURL: null };
 
-  const DROP_PROMPT = { id: 'drop', title: "Today's drop", hint: 'Speak it, ship it — fans hear it tomorrow at 7:00 AM in your voice.' };
+  const DROP_PROMPT = { id: 'drop', title: 'Record a drop', src: 'YOUR CALL · YOU APPROVE BEFORE IT SHIPS', hint: 'Speak it — your Coach drafts it clean, you approve, fans hear it in your voice.' };
 
   function promptById(id) {
     if (id === 'drop') return DROP_PROMPT;
@@ -36,7 +36,8 @@
       const rec = s.athRec || 'idle'; // idle | rec | review
       const stories = s.stories || [];
 
-      const chips = [DROP_PROMPT].concat(Data.STORY_PROMPTS).map(p => {
+      const passed = s.passedPrompts || [];
+      const chips = [DROP_PROMPT].concat(Data.STORY_PROMPTS).filter(p => !passed.includes(p.id)).map(p => {
         const on = p.id === sel.id;
         return `<button data-action="athCapSelect" data-arg="${arg({ id: p.id })}"
           style="flex-shrink:0;font-size:11.5px;font-weight:${on ? 800 : 700};padding:7px 13px;border-radius:999px;
@@ -87,13 +88,30 @@
 
           <div style="display:flex;gap:7px;overflow-x:auto;padding-bottom:4px;margin:0 -18px;padding-left:18px;padding-right:18px" class="scroll">${chips}</div>
 
-          <div class="gradcard" style="padding:16px 16px 18px;display:flex;flex-direction:column;gap:6px">
-            <span class="k-label" style="font-size:9.5px;color:var(--lav)">${sel.id === 'drop' ? "TODAY'S DROP · STRAIGHT TO SCHEDULE" : 'FROM YOUR ONBOARDING SCAN · GAP REPORT'}</span>
+          <div class="gradcard" style="padding:16px 16px 14px;display:flex;flex-direction:column;gap:6px">
+            <span class="k-label" style="font-size:9.5px;color:var(--lav)">${esc(sel.src || 'FROM YOUR GAP REPORT')}</span>
             <div style="font-size:17px;font-weight:800">${esc(sel.title)}</div>
             <div style="font-size:12px;color:var(--sub2);line-height:1.55">${esc(sel.hint)}</div>
+            ${sel.id !== 'drop' && sel.id !== 'sp-free'
+              ? `<button style="align-self:flex-start;background:none;border:none;padding:4px 0 0;font-size:11px;font-weight:700;color:var(--dim2);text-decoration:underline;text-underline-offset:2px"
+                  data-action="athCapPass" data-arg="${arg({ id: sel.id })}">Pass — don't ask me this</button>`
+              : ''}
           </div>
 
           <div style="display:flex;justify-content:center;padding:10px 0 4px;min-height:150px;align-items:center">${stage}</div>
+
+          <div class="card2" style="padding:13px 14px;display:flex;flex-direction:column;gap:9px">
+            <div style="display:flex;justify-content:space-between;align-items:baseline">
+              <span class="k-label" style="font-size:10px;color:var(--lav)">WHERE YOUR COACH IS THIN</span>
+              <span style="font-size:10px;color:var(--dim2)">prompts pull from here</span>
+            </div>
+            ${Data.COVERAGE.slice().sort((a, b) => a.pct - b.pct).slice(0, 3).map(c => `
+              <div style="display:flex;align-items:center;gap:10px">
+                <span style="font-size:11.5px;font-weight:700;width:80px;flex-shrink:0">${esc(c.bucket)}</span>
+                <div class="progress" style="flex:1;height:4px"><div style="width:${c.pct}%"></div></div>
+                <span style="font-size:10.5px;color:${c.pct < 30 ? 'var(--papaya)' : 'var(--dim2)'};width:64px;text-align:right;flex-shrink:0">${c.pct}% covered</span>
+              </div>`).join('')}
+          </div>
 
           ${stories.length ? `<div style="display:flex;flex-direction:column;gap:9px;padding-bottom:8px">
             <div style="font-size:13px;font-weight:800;color:#B9C0BA">Captured</div>
@@ -130,6 +148,16 @@
 
   window.Actions.athCapSelect = function (a) {
     Store.set(s => { s.captureSel = a.id; s.athRec = 'idle'; });
+  };
+
+  // "don't ask me this" — retire the prompt; the pass itself is signal about her topics
+  window.Actions.athCapPass = function (a) {
+    Store.set(s => {
+      s.passedPrompts = s.passedPrompts || [];
+      if (!s.passedPrompts.includes(a.id)) s.passedPrompts.push(a.id);
+      if (s.captureSel === a.id) s.captureSel = 'drop';
+    });
+    Actions.toast({ msg: 'Noted — we won’t push that one again.' });
   };
 
   window.Actions.athCapStart = function () {
