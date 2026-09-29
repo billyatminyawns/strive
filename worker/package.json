@@ -2,11 +2,16 @@
   "name": "strive-api",
   "version": "1.0.0",
   "private": true,
-  "description": "STRIVE demo API — Claude drafts Angela's replies, WellSaid renders her voice.",
+  "type": "module",
+  "description": "STRIVE API — the iOS app's v1 backend (D1 + KV, Claude drafts, Angela's cloned voice) plus the web demo's legacy routes.",
   "main": "src/index.js",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "seed:build": "node seed/build-seed.mjs",
+    "local:up": "scripts/local-up.sh",
+    "local:down": "scripts/local-down.sh",
+    "test:smoke": "node test/smoke.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0"

@@ -3,8 +3,25 @@ main = "src/index.js"
 compatibility_date = "2026-07-01"
 
 # Secrets (set via `npx wrangler secret put <NAME>`, never in this file):
-#   ANTHROPIC_API_KEY  — console.anthropic.com
-#   WELLSAID_API_KEY   — developer.wellsaidlabs.com (same key as the local connector)
+#   ANTHROPIC_API_KEY  — console.anthropic.com (Claude drafts; without it /v1 drafting is off)
+#   FISH_API_KEY       — fish.audio API credit (Angela's cloned voice)
+#   WELLSAID_API_KEY   — developer.wellsaidlabs.com (legacy /voice fallback)
+#   ATHLETE_KEYS       — JSON {"<studio key>": "<athlete id>"} for POST /v1/auth/athlete
 
 [vars]
 ALLOWED_ORIGINS = "https://billyatminyawns.github.io,http://localhost:8642"
+DRAFT_MODEL = "claude-opus-5"
+MIN_BUILD = "1"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "strive-db"
+database_id = "00000000-0000-0000-0000-000000000000"
+
+[[kv_namespaces]]
+binding = "AUDIO"
+id = "00000000000000000000000000000000"
+
+# Daily drop at 14:00 UTC (7:00 AM Pacific) — keep PUBLISH_HOUR_UTC in src/v1.js in sync.
+[triggers]
+crons = ["0 14 * * *"]

@@ -4,38 +4,15 @@
                                       Fish Audio (her cloned "AR" voice) when FISH_API_KEY is set;
                                       falls back to WellSaid Studio when only WELLSAID_API_KEY is.
    GET  /health                     → {ok}
-   Secrets: ANTHROPIC_API_KEY, FISH_API_KEY, WELLSAID_API_KEY. CORS-locked to the demo origins.
+   /v1/*                            → the iOS app's API (src/v1.js, contract in docs/API-v1.md),
+                                      plus a daily 14:00 UTC cron that publishes queued drops.
+   Secrets: ANTHROPIC_API_KEY, FISH_API_KEY, WELLSAID_API_KEY, ATHLETE_KEYS. CORS-locked to the demo origins.
    Abuse guards: per-isolate IP counters + global daily caps (best effort, demo-grade). */
 
 import Anthropic from '@anthropic-ai/sdk';
-
-/* ---------- Angela persona grounding (mirrors the app's seeded content) ---------- */
-
-const PERSONA = `You draft replies for STRIVE, a concept demo of an athlete fan platform.
-You write AS Angela Ruggiero — 4x Olympian, gold medalist (Nagano 1998), Hockey Hall of Fame 2015,
-defense, 256 games for Team USA, Harvard grad, former IOC member. Fans ask her questions; she answers
-in first person. Every draft is reviewed and approved by Angela before it is sent, and will be spoken
-aloud in her voice.
-
-STYLE — match these approved answers of hers:
-- "Short memory, long habits. I gave myself one length of the bench to be frustrated — then eyes up,
-  next play. The reset is a skill you train, not a mood you wait for."
-- "Nerves mean it matters. The night before gold in Nagano I barely slept — so I stopped chasing calm
-  and built a routine I could do scared: same warm-up, same first touch, one cue word. Borrow mine
-  until you build yours."
-- "Tell her the tryout starts in the parking lot — how she carries her bag, how she greets the coach,
-  how she listens in line. Skills get you noticed, but coachability gets you picked."
-
-RULES:
-- 45–90 words. First person. Warm locker-room directness: concrete, a little wry, zero corporate filler.
-- Plain text only. No emojis, no markdown, no greeting line, no sign-off — output ONLY the reply body.
-- Ground personal details in the facts above; never invent new stats, dates, teammates, or events.
-- Sound spoken, not written — it will be read aloud.
-- If the question asks for medical, betting, or legal advice, write a short polite pass instead
-  (offer to help with training, mindset, leadership, or the game itself).`;
-
-const TOPICS_RULE = `- Guardrail active: stay strictly within hockey, training, mindset, leadership,
-and career topics. If the question is outside those, write a short warm redirect to what you can help with.`;
+import { PERSONA, TOPICS_RULE } from './persona.js';
+import { FISH_VOICE, FISH_MODEL, FISH_SPEED_DEFAULT, sha1, fishTTS } from './voice.js';
+import { handleV1, scheduledV1 } from './v1.js';
 
 /* ---------- helpers ---------- */
 
@@ -76,11 +53,6 @@ function budgetCheck(kind, ip) {
   return null;
 }
 
-async function sha1(text) {
-  const buf = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(text));
-  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
 /* ---------- route handlers ---------- */
 
 async function handleDraft(request, env, cors) {
@@ -115,11 +87,6 @@ async function handleDraft(request, env, cors) {
   }
 }
 
-// Fish Audio: Billy's private cloned voice "AR Engaging Discussion Voice"
-const FISH_VOICE = '45798132339e4f52be5ffe5a59323ff9';
-const FISH_MODEL = 's2-pro';
-const FISH_SPEED_DEFAULT = 0.87;  // matches the pre-rendered library's slower, more deliberate pace
-
 async function handleVoice(request, env, cors, ctx) {
   const provider = env.FISH_API_KEY ? 'fish' : env.WELLSAID_API_KEY ? 'wellsaid' : null;
   if (!provider) return json({ error: 'voice service not configured' }, 503, cors);
@@ -148,11 +115,7 @@ async function handleVoice(request, env, cors, ctx) {
   if (capMsg) return json({ error: capMsg }, 429, cors);
 
   const wsRes = provider === 'fish'
-    ? await fetch('https://api.fish.audio/v1/tts', {
-        method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + env.FISH_API_KEY, 'content-type': 'application/json', 'model': FISH_MODEL },
-        body: JSON.stringify({ text, reference_id: FISH_VOICE, format: 'mp3', prosody: { speed } }),
-      })
+    ? await fishTTS(env, text, speed)
     : await fetch('https://api.wellsaidlabs.com/v1/tts/stream', {
         method: 'POST',
         headers: { 'X-Api-Key': env.WELLSAID_API_KEY, 'content-type': 'application/json' },
@@ -183,9 +146,11 @@ async function handleVoice(request, env, cors, ctx) {
 
 export default {
   async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    if (url.pathname === '/v1' || url.pathname.startsWith('/v1/')) return handleV1(request, env, ctx);
+
     const origin = request.headers.get('Origin') || '';
     const cors = corsHeaders(env, origin);
-    const url = new URL(request.url);
 
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
     if (url.pathname === '/health') return json({ ok: true }, 200, cors);
@@ -193,5 +158,9 @@ export default {
     if (url.pathname === '/draft') return handleDraft(request, env, cors);
     if (url.pathname === '/voice') return handleVoice(request, env, cors, ctx);
     return json({ error: 'not found' }, 404, cors);
+  },
+
+  async scheduled(controller, env, ctx) {
+    await scheduledV1(env);
   },
 };

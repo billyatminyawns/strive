@@ -1,3 +1,12 @@
 .DS_Store
 worker/node_modules/
 worker/.wrangler/
+worker/.dev.vars
+worker/.secrets.local.json
+worker/seed/.build/
+worker/.wrangler-dev.log
+ios/**/xcuserdata/
+ios/**/*.xcuserstate
+ios/build/
+out/
+*.xcresult
