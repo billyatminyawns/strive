@@ -7,7 +7,9 @@
    With voice configured, the first run renders one new clip (REPLY); later runs reuse it from KV.
    Against a local instance (scripts/local-up.sh) it also runs the drop pipeline and the daily cron
    (plus a starter approval on the angela tenant when STRIVE_TEST_KEY_ANGELA is set). Those leave
-   invisible rows behind (rejected drops can't be deleted), so they never run against production. */
+   invisible rows behind (rejected drops can't be deleted), so they never run against production.
+   v1.1: CORS for the web app, crisis → safety message, answeredBy/sources, autopilot settings and
+   the keep/retract guards. Coach Angela's actual brain paths: test/v1-brain.test.mjs (local mock). */
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -24,6 +26,11 @@ const REPLY = "Mediocre days are information, not a verdict. Pick one thing to d
 // a starter answer whose clip is pre-loaded in KV — approvable even when voice isn't configured
 const STARTER_REPLY = 'Short memory, long habits. I gave myself one length of the bench to be frustrated — then eyes up, next play. The reset is a skill you train, not a mood you wait for.';
 const PENDING_NOTE = "With Angela — she reviews every answer before it's sent.";
+const ORIGIN = 'https://billyatminyawns.github.io';   // in ALLOWED_ORIGINS
+const DEV_ORIGINS = ['http://localhost:8642', 'http://127.0.0.1:8642'];
+const acao = r => r.headers.get('access-control-allow-origin');
+const varyOrigin = r => /\borigin\b/i.test(r.headers.get('vary') || '');
+const headersOf = r => ({ status: r.status, headers: Object.fromEntries(r.headers) });
 
 function reviewKey() {
   if (process.env.STRIVE_TEST_KEY_REVIEW) return process.env.STRIVE_TEST_KEY_REVIEW;
@@ -64,9 +71,10 @@ async function main() {
   const key = reviewKey();
 
   const cfg = await api('GET', '/config');
-  check('config', cfg.status === 200 && ['drafting', 'voice', 'push'].every(k => typeof cfg.data[k] === 'boolean') && cfg.data.minBuild === 1, cfg.data);
+  check('config', cfg.status === 200 && ['drafting', 'voice', 'push', 'autopilot'].every(k => typeof cfg.data[k] === 'boolean') && cfg.data.minBuild === 1, cfg.data);
   const voice = cfg.data.voice;
-  console.log(`        drafting=${cfg.data.drafting} voice=${voice} push=${cfg.data.push}`);
+  console.log(`        drafting=${cfg.data.drafting} voice=${voice} push=${cfg.data.push} autopilot=${cfg.data.autopilot}`);
+  await corsChecks();
 
   check('unknown route → 404', isErr(await api('GET', '/nope'), 404));
   check('no token → 401', isErr(await api('GET', '/me'), 401));
@@ -86,6 +94,7 @@ async function main() {
   const before = athlete && await tenantSnapshot(athlete);
 
   let paused = false;
+  let autopilotWas = null;   // set while the test has flipped the tenant's autopilot switch
   const mine = {};
   try {
     if (!athlete) throw new Error('athlete sign-in failed');
@@ -109,18 +118,26 @@ async function main() {
       && drops.data.drops.every((d, i, a) => d.status === 'published' && (i === 0 || a[i - 1].publishedAt >= d.publishedAt)), drops.data);
 
     const ask = text => api('POST', '/questions', { token: fan, body: { text } });
+    const unanswered = q => q && q.answeredBy === null && Array.isArray(q.sources) && q.sources.length === 0;
     const guarded = await ask('Should I bet on the game tonight?');
     check('ask: sensitive → guarded', guarded.status === 201 && guarded.data.question.status === 'guarded'
-      && guarded.data.question.note && !guarded.data.question.audioKey, guarded.data);
+      && guarded.data.question.note && !guarded.data.question.audioKey && unanswered(guarded.data.question), guarded.data);
+    const crisis = await api('POST', '/questions', { token: fan, body: { text: 'I want to die after getting cut today' }, headers: { origin: ORIGIN } });
+    const cq = crisis.data.question;
+    check('ask: crisis language → guarded with the 988 safety message, never voiced', crisis.status === 201 && cq?.status === 'guarded'
+      && /\b988\b/.test(cq.note) && /\b911\b/.test(cq.note) && cq.answer === null && cq.audioKey === null && unanswered(cq), crisis.data);
+    check('CORS: allowed origin on a 201', acao(crisis) === ORIGIN && varyOrigin(crisis), headersOf(crisis));
     for (const text of ['How do I handle pre-game nerves?', 'What have you done since hockey?']) {
       const r = await ask(text);
       check(`ask: instant hit — "${text}"`, r.status === 201 && r.data.question.status === 'instant'
-        && r.data.question.answer && r.data.question.audioKey, r.data);
+        && r.data.question.answer && r.data.question.audioKey && r.data.question.answeredBy === 'library'
+        && Array.isArray(r.data.question.sources) && r.data.question.sources.length === 0, r.data);
+      mine.instant = r.data.question?.id;
     }
     for (const text of ['How do I stop feeling mediocre at practice?', 'Any tips for battling along the boards?']) {
       const r = await ask(text);
       check(`ask: no false instant hit — "${text}"`, r.status === 201 && r.data.question.status === 'pending'
-        && r.data.question.note === PENDING_NOTE, r.data);
+        && r.data.question.note === PENDING_NOTE && unanswered(r.data.question), r.data);
       mine[text.includes('mediocre') ? 'mediocre' : 'boards'] = r.data.question?.id;
     }
     check('ask: empty text → 400', isErr(await ask('   '), 400));
@@ -137,11 +154,21 @@ async function main() {
     const q = queue.data.questions || [];
     const qm = q.find(x => x.id === mine.mediocre);
     check('studio queue: the fan\'s pending question', queue.status === 200 && qm && qm.kind === 'fan' && qm.fanName === 'Smoke Test'
-      && typeof qm.drafting === 'boolean' && ['claude', 'none'].includes(qm.draftSource), qm || q);
+      && typeof qm.drafting === 'boolean' && ['claude', 'coach', 'none'].includes(qm.draftSource), qm || q);
+    check('studio queue: v1.1 sources/confidence/reason', q.every(x => Array.isArray(x.sources) && 'confidence' in x && 'reason' in x
+      && (x.confidence === null || (x.confidence >= 0 && x.confidence <= 1)) && (x.reason === null || typeof x.reason === 'string')), qm);
     check('studio queue: starters carry their drafts', q.some(x => x.kind === 'starter' && x.fanName === null && x.draftSource === 'starter' && x.draft), q);
     check('studio queue: oldest first', q.every((x, i) => i === 0 || q[i - 1].createdAt <= x.createdAt));
     const settings = await api('GET', '/studio/settings', { token: athlete });
-    check('studio settings', settings.status === 200 && ['paused', 'guardTopics', 'guardDecline'].every(k => typeof settings.data[k] === 'boolean'), settings.data);
+    check('studio settings', settings.status === 200 && ['paused', 'guardTopics', 'guardDecline', 'autopilot'].every(k => typeof settings.data[k] === 'boolean'), settings.data);
+    // flipped and straight back: nothing is asked in between, so no answer can go out on autopilot
+    autopilotWas = settings.data.autopilot;
+    const apFlip = await api('PATCH', '/studio/settings', { token: athlete, body: { autopilot: !autopilotWas } });
+    const apBack = await api('PATCH', '/studio/settings', { token: athlete, body: { autopilot: autopilotWas } });
+    if (apBack.data.autopilot === autopilotWas) autopilotWas = null;
+    check('studio settings: autopilot round-trips', apFlip.status === 200 && apFlip.data.autopilot === !settings.data.autopilot
+      && apFlip.data.paused === settings.data.paused && apBack.data.autopilot === settings.data.autopilot, [apFlip.data, apBack.data]);
+    check('studio settings: autopilot must be a boolean', isErr(await api('PATCH', '/studio/settings', { token: athlete, body: { autopilot: 'yes' } }), 400));
     const prompts = await api('GET', '/studio/prompts', { token: athlete });
     const p = prompts.data;
     check('studio prompts', prompts.status === 200 && p.prompts.some(x => x.id === 'free') && p.prompts.some(x => x.src === 'STARTER PROMPT')
@@ -189,6 +216,7 @@ async function main() {
     const answered = thread.data.questions.find(x => x.id === mine.mediocre);
     check('fan thread: answered with audio', answered?.status === 'answered' && answered.answer === answer
       && answered.audioKey === approved.data.audioKey && answered.answeredAt >= answered.createdAt && answered.note === null, answered);
+    check('fan thread: answeredBy angela, no sources', answered?.answeredBy === 'angela' && answered.sources.length === 0, answered);
     check('fan thread: oldest first, not paused', thread.data.paused === false
       && thread.data.questions.every((x, i, a) => i === 0 || a[i - 1].createdAt <= x.createdAt));
 
@@ -202,6 +230,22 @@ async function main() {
       && ranged.headers.get('content-range') === `bytes 0-1/${head.length}`, { status: ranged.status, range: ranged.headers.get('content-range') });
     check('audio: needs a token', (await api('GET', '/audio/' + approved.data.audioKey)).status === 401);
     check('audio: unknown key → 404', isErr(await api('GET', '/audio/' + '0'.repeat(40), { token: fan }), 404));
+    const corsAudio = await api('GET', '/audio/' + approved.data.audioKey, { token: fan, headers: { origin: ORIGIN } });
+    check('CORS: audio carries the headers', corsAudio.status === 200 && corsAudio.headers.get('content-type') === 'audio/mpeg'
+      && corsAudio.data.length === head.length && acao(corsAudio) === ORIGIN && varyOrigin(corsAudio), headersOf(corsAudio));
+    const corsRange = await api('GET', '/audio/' + approved.data.audioKey, { token: fan, headers: { origin: DEV_ORIGINS[1], range: 'bytes=0-1' } });
+    check('CORS: ranged audio too', corsRange.status === 206 && acao(corsRange) === DEV_ORIGINS[1], headersOf(corsRange));
+
+    // Coach Angela oversight: only autopilot answers can be kept or retracted
+    const coach = await api('GET', '/studio/coach', { token: athlete });
+    check('studio coach: list of autopilot answers', coach.status === 200 && Array.isArray(coach.data.answers)
+      && coach.data.answers.every(x => typeof x.reviewed === 'boolean' && Array.isArray(x.sources)), coach.data);
+    check('fan on /studio/coach → 403', isErr(await api('GET', '/studio/coach', { token: fan }), 403));
+    for (const [verb, id, what, status] of [['keep', mine.mediocre, 'her own answer', 409], ['retract', mine.mediocre, 'her own answer', 409],
+      ['retract', mine.instant, 'a library answer', 409], ['retract', mine.boards, 'a pending question', 409],
+      ['keep', 'q_not_a_question', 'an unknown question', 404], ['retract', 'q_not_a_question', 'an unknown question', 404]]) {
+      check(`${verb} ${what} → ${status}`, isErr(await api('POST', `/studio/questions/${id}/${verb}`, { token: athlete }), status));
+    }
 
     const again = await ask('How do I stop feeling mediocre at practice?');
     check('approved answer joins the instant library', again.data.question?.status === 'instant' && again.data.question.audioKey === approved.data.audioKey, again.data);
@@ -224,24 +268,30 @@ async function main() {
 
     check('decline', (await api('POST', `/studio/questions/${mine.boards}/decline`, { token: athlete })).data.ok === true);
     const declined = (await api('GET', '/questions', { token: fan })).data.questions.find(x => x.id === mine.boards);
-    check('fan thread: declined with note', declined?.status === 'declined' && /passed on this one/.test(declined.note), declined);
+    check('fan thread: declined with note', declined?.status === 'declined' && /passed on this one/.test(declined.note)
+      && declined.answeredBy === null, declined);
 
     const pause = await api('PATCH', '/studio/settings', { token: athlete, body: { paused: true } });
     paused = pause.data.paused === true;
     check('pause', paused, pause.data);
     check('ask while paused → 409', isErr(await ask('Are you still answering questions?'), 409));
+    const crisisPaused = await ask("I'm not safe at home and I don't know what to do");
+    check('crisis language while paused still gets the safety message', crisisPaused.status === 201
+      && crisisPaused.data.question?.status === 'guarded' && /\b988\b/.test(crisisPaused.data.question.note), crisisPaused.data);
     check('thread reports paused', (await api('GET', '/questions', { token: fan })).data.paused === true);
     const unpause = await api('PATCH', '/studio/settings', { token: athlete, body: { paused: false } });
     paused = unpause.data.paused !== false;
     check('unpause', !paused, unpause.data);
 
     if (isLocal) {
-      console.log('  -- local instance: drops, cron, starter approval');
+      console.log('  -- local instance: drops, cron, starter approval, legacy demo routes');
       await dropsAndCron(athlete, fan);
       await angelaTenant();
+      await legacyRoutes(cfg.data);
     }
   } finally {
     if (paused && athlete) await api('PATCH', '/studio/settings', { token: athlete, body: { paused: false } });
+    if (autopilotWas !== null && athlete) await api('PATCH', '/studio/settings', { token: athlete, body: { autopilot: autopilotWas } });
     const del = await api('DELETE', '/me', { token: fan });
     check('DELETE /me removes the fan', del.status === 200 && del.data.ok === true, del.data);
     check('deleted fan\'s token → 401', (await api('GET', '/me', { token: fan })).status === 401);
@@ -264,6 +314,63 @@ async function main() {
   console.log(`\n${passed} passed, ${failed.length} failed`);
   if (failed.length) console.log('failed: ' + failed.join(' · '));
   process.exit(failed.length ? 1 : 0);
+}
+
+// v1.1: the web app's browser access. No sign-in needed — errors carry the headers too.
+async function corsChecks() {
+  const preflight = o => fetch(base + '/questions', { method: 'OPTIONS', headers: {
+    origin: o, 'access-control-request-method': 'POST', 'access-control-request-headers': 'authorization, content-type' } });
+  for (const o of [ORIGIN, ...DEV_ORIGINS]) {
+    const r = await preflight(o);
+    const h = k => r.headers.get(k) || '';
+    check(`CORS: preflight from ${o} → 204`, r.status === 204 && acao(r) === o && varyOrigin(r)
+      && /\bauthorization\b/i.test(h('access-control-allow-headers')) && /\bcontent-type\b/i.test(h('access-control-allow-headers'))
+      && ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'].every(m => h('access-control-allow-methods').split(/,\s*/).includes(m))
+      && h('access-control-max-age') === '86400', headersOf(r));
+  }
+  const evil = await preflight('https://evil.example');
+  check('CORS: unlisted origin gets no Allow-Origin (preflight)', evil.status === 204 && !acao(evil)
+    && !evil.headers.get('access-control-allow-headers'), headersOf(evil));
+  const evilGet = await api('GET', '/config', { headers: { origin: 'https://evil.example' } });
+  check('CORS: unlisted origin gets no Allow-Origin (GET)', evilGet.status === 200 && !acao(evilGet), headersOf(evilGet));
+  const plain = await api('GET', '/config');
+  check('CORS: no Origin (the iOS app) is unaffected', plain.status === 200 && !acao(plain) && typeof plain.data.drafting === 'boolean', headersOf(plain));
+  const ok = await api('GET', '/config', { headers: { origin: ORIGIN } });
+  check('CORS: allowed origin on a 200', ok.status === 200 && acao(ok) === ORIGIN && varyOrigin(ok), headersOf(ok));
+  for (const [what, r, status] of [
+    ['404', await api('GET', '/nope', { headers: { origin: ORIGIN } }), 404],
+    ['401', await api('GET', '/me', { headers: { origin: DEV_ORIGINS[0] } }), 401],
+    ['405', await api('PUT', '/config', { headers: { origin: ORIGIN } }), 405],
+  ]) {
+    check(`CORS: headers on a ${what} error`, isErr(r, status) && [ORIGIN, DEV_ORIGINS[0]].includes(acao(r)) && varyOrigin(r), headersOf(r));
+  }
+}
+
+// The web demo's legacy routes (index.js) behave as before: own CORS, 503s without keys.
+async function legacyRoutes(cfg) {
+  const health = await fetch(origin + '/health', { headers: { origin: ORIGIN } });
+  const hb = await health.json();
+  check('legacy: GET /health', health.status === 200 && hb.ok === true && typeof hb.brain?.version === 'string'
+    && hb.brain.configured === cfg.drafting && acao(health) === ORIGIN, hb);
+  const pre = await fetch(origin + '/ask', { method: 'OPTIONS', headers: { origin: 'https://evil.example' } });
+  check('legacy: CORS unchanged (first allowed origin, GET/POST only)', pre.status === 204 && acao(pre) === ORIGIN
+    && pre.headers.get('access-control-allow-methods') === 'GET, POST, OPTIONS' && pre.headers.get('access-control-allow-headers') === 'content-type', headersOf(pre));
+  const post = (p, b) => fetch(origin + p, { method: 'POST', headers: { origin: ORIGIN, 'content-type': 'application/json' }, body: JSON.stringify(b) })
+    .then(async r => ({ status: r.status, data: await r.json() }));
+  if (!cfg.drafting) {
+    for (const [p, error] of [['/ask', 'brain not configured'], ['/draft', 'draft service not configured']]) {
+      const r = await post(p, { question: 'How do I stay calm?' });
+      check(`legacy: POST ${p} without a key → 503`, r.status === 503 && r.data.error === error, r);
+    }
+  } else {
+    // a key is set (maybe a real one): /ask through the mock brain is covered by test/v1-brain.test.mjs
+    console.log('  skip  legacy /ask and /draft with a key configured');
+  }
+  if (!cfg.voice) {
+    const r = await post('/voice', { text: 'Short memory, long habits.' });
+    check('legacy: POST /voice without a voice key → 503', r.status === 503 && r.data.error === 'voice service not configured', r);
+  }
+  check('legacy: unknown route → 404', (await post('/nope', {})).status === 404);
 }
 
 // what fans and the studio can see of the tenant: queue, drops, settings, prompts, library coverage

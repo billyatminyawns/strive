@@ -202,10 +202,22 @@
           <div class="row" style="justify-content:space-between">
             <div>
               <div style="font-size:13px;font-weight:700">Backend API <span style="color:var(--faint);font-weight:600">· Cloudflare Worker</span></div>
-              <div style="font-size:11.5px;color:var(--sub);margin-top:2px">Claude drafts new replies · WellSaid renders new voice lines. Keys stay server-side.</div>
+              <div style="font-size:11.5px;color:var(--sub);margin-top:2px">Coach Angela answers and drafts with Claude · her cloned voice renders new lines. Keys stay server-side.</div>
             </div>
             <span class="status-chip ${workerState[0]}">${workerState[1]}</span>
           </div>
+          ${api && api.brain ? (() => {
+            const b = api.brain;
+            const state = !b.configured ? ['off', 'NO CLAUDE KEY'] : b.autopilot === 'grounded' ? ['on', 'AUTOPILOT'] : ['', 'REVIEW ONLY'];
+            return `<div class="row" style="justify-content:space-between">
+              <div>
+                <div style="font-size:13px;font-weight:700">Coach Angela's brain <span style="color:var(--faint);font-weight:600">· ${UI.esc(b.version)}</span></div>
+                <div style="font-size:11.5px;color:var(--sub);margin-top:2px">${b.facts} verified facts · ${b.entries} cited notes from her public record · ${b.avoid} no-go topics.
+                  ${b.autopilot === 'grounded' ? 'Grounded replies may send on their own when Angela allows it.' : 'Every new answer waits for Angela.'}</div>
+              </div>
+              <span class="status-chip ${state[0]}">${state[1]}</span>
+            </div>`;
+          })() : ''}
         </div>
 
         <div style="border-top:1px solid var(--line);padding-top:14px;display:flex;flex-direction:column;gap:10px">
@@ -219,7 +231,7 @@
             <button class="btn btn-mint" style="padding:10px 14px;flex-shrink:0" data-action="byokSave">Save</button>
             ${hasKey ? `<button class="btn btn-ghost" style="padding:10px 12px;flex-shrink:0" data-action="byokClear">Clear</button>` : ''}
           </div>
-          <div style="font-size:11px;color:var(--faint);line-height:1.5">Drafts use Claude Opus 4.8. Voice for brand-new lines still needs the backend; without it they play in on-device speech. Pre-recorded WellSaid audio always works.</div>
+          <div style="font-size:11px;color:var(--faint);line-height:1.5">BYOK drafts use Claude Opus 4.8 without the brain's grounding. Voice for brand-new lines still needs the backend; without it they play in on-device speech. Pre-recorded WellSaid audio always works.</div>
         </div>
 
         <div style="border-top:1px solid var(--line);padding-top:12px;display:flex;justify-content:space-between;align-items:center">
@@ -412,5 +424,6 @@
   document.addEventListener('DOMContentLoaded', () => {
     Store.get();
     App.render();
+    if (window.Api) Api.checkWorker();   // learn whether Coach Angela's brain is live before the first ask
   });
 })();

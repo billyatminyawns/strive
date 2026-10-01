@@ -62,6 +62,8 @@ Runs on the existing Cloudflare Worker (`worker/`). The legacy web-demo routes `
 ```
 `status`:
 - `pending` — waiting for the athlete. `note` = "With Angela — she reviews every answer before it's sent."
+  (v1.1: while autopilot is live — server `AUTOPILOT_MODE=grounded` + a brain key + Angela's own switch — it reads
+  "With Angela — her AI Coach answers what her public record covers; she answers the rest herself.")
 - `answered` — athlete approved; `answer` + `audioKey` set.
 - `instant` — matched an already-approved answer; `answer` + `audioKey` set immediately.
 - `guarded` — auto-declined sensitive topic (medical/betting/legal). No audio. `note` = system text (not in the athlete's voice).
@@ -169,3 +171,49 @@ Details the tables above leave open. None of them change a documented shape.
 - `DELETE /v1/me` (fan) also removes library entries approved from that fan's questions, since they carry the fan's words.
 - Rejecting a drop takes it off every list, including a published one (fans stop seeing it).
 - Other statuses the client may see: 400 invalid input, 405 wrong method, 413 story audio over ~20 MB, 500 unexpected. Every error body is `{ "error": "…" }` with a message fit to show as-is.
+
+## v1.1 — web client + Coach Angela brain (10/1/26)
+
+Additions for the live web app (served from GitHub Pages) and for wiring the Coach Angela brain (`worker/src/brain.js`) into the real question flow. Nothing above changes shape; these fields and routes are additive.
+
+### Browser access (CORS)
+Every `/v1/*` route answers browser origins listed in `ALLOWED_ORIGINS` (plus `http://localhost:8642` and `http://127.0.0.1:8642` for local dev): `Access-Control-Allow-Origin: <origin>`, `Vary: Origin`, and `OPTIONS` preflights return 204 with `Access-Control-Allow-Methods: GET, POST, PATCH, DELETE, OPTIONS`, `Access-Control-Allow-Headers: authorization, content-type`, `Access-Control-Max-Age: 86400`. Requests without an `Origin` header (the iOS app) are unaffected. Unlisted origins get no `Access-Control-Allow-Origin`.
+
+### Question — new fields
+```json
+{ "answeredBy": "angela", "sources": [{ "id": "olympedia-2010", "title": "Olympedia — Angela Ruggiero", "url": "https://…" }] }
+```
+- `answeredBy`: `"angela"` (she approved it), `"library"` (an `instant` match to an answer she approved earlier), `"coach"` (Coach Angela answered on autopilot — AI in her voice, grounded in her public record), or `null` while unanswered.
+- `sources`: citations for `coach` answers (may be empty), otherwise `[]`.
+
+### Question flow with the brain
+1. **Crisis language** (the brain's crisis matcher) → `guarded`, `note` = the fixed safety message (988 etc.). Never voiced. Runs even when no Anthropic key is set.
+2. Sensitive topics → `guarded` (unchanged). Approved-library match → `instant`, `answeredBy: "library"` (unchanged).
+3. Otherwise `pending`. If `ANTHROPIC_API_KEY` is set, the brain runs in the background (instead of the plain drafter):
+   - **autopilot answer** (server `AUTOPILOT_MODE=grounded` AND the athlete's `autopilot` setting on AND every brain gate passes) → voice rendered → `answered`, `answeredBy: "coach"`, `sources` set, fan notified ("Coach Angela answered"). If the voice render fails it falls through to review.
+   - **review** → stays `pending`; the brain's reply becomes the draft (`draftSource: "coach"`) with `sources`, `confidence` and `reason` (why it needs Angela) on the StudioQuestion.
+   - **decline** → `guarded` with the brain's decline text as `note`.
+4. Without a key: unchanged (empty draft, Angela writes it).
+
+### Config / settings
+- `GET /v1/config` adds `"autopilot": bool` — true only when the server is in `grounded` mode and a key is configured.
+- `StudioSettings` adds `"autopilot": bool` (Angela's own switch, default `false`); `PATCH /v1/studio/settings` accepts it.
+- `StudioQuestion` adds `sources`, `confidence` (0–1 or null) and `reason` (string or null).
+
+### Autopilot oversight (athlete)
+| Method | Path | Body | Response |
+|---|---|---|---|
+| GET | `/v1/studio/coach` | — | `{ "answers": [{ id, text, answer, sources, confidence, reviewed, answeredAt, fanName }] }` — Coach Angela's autopilot answers, newest first, max 50 |
+| POST | `/v1/studio/questions/:id/keep` | — | `{ "ok": true }` — marks an autopilot answer reviewed |
+| POST | `/v1/studio/questions/:id/retract` | — | `{ "ok": true }` — withdraws an autopilot answer: back to `pending` with the old answer as the draft; the fan's thread shows `note` "Angela is taking another look at this one." · 409 if it isn't an autopilot answer |
+
+### Server notes (v1.1 implementation)
+- **One deviation, for safety:** crisis language gets its `201` `guarded` safety reply even while the athlete is paused and past the 10/day limit (up to 20 that day), instead of 409/429. It never reaches Angela, Claude or the voice.
+- **Brain results land in the background.** `POST /v1/questions` returns `pending` at once; seconds later the question is `answered` (autopilot), `guarded` (decline), or still `pending` with a coach draft in her queue. Poll `GET /v1/questions` (fan) or `GET /v1/studio/queue` (`drafting` is `true` meanwhile, and reads `false` after 2 minutes regardless).
+- **Keep = approve:** a kept answer also joins the instant-answer library (the next fan asking it gets `instant`, `answeredBy: "library"`). Keep is idempotent. Retract (kept or not) removes that library entry; instant replies it already gave stay. Both 409 with `"Only Coach Angela's autopilot answers can be kept."` / `"… retracted."` for anything else (her own answers, library answers, pending or guarded questions), 404 for unknown ids.
+- **After a retract** the StudioQuestion has `draftSource: "coach"`, the withdrawn answer as `draft`, the original `sources`/`confidence`, and `reason` "You retracted this autopilot answer — rewrite it or approve it." The fan's note stays until she approves (→ `answeredBy: "angela"`) or declines.
+- `reason` is a display-ready line. When the brain wanted to answer but something held it back, the blockers follow ` · ` (e.g. "… · Angela has autopilot off", "… · Voice render failed", "… · Autopilot was switched off before it sent"). With no usable brain result the draft is empty (`draftSource: "none"`) and `reason` says so. Turning `autopilot` off also stops answers still in flight.
+- Additive fields: `sources` items are `{ id, title, outlet, date, url }`; `/v1/studio/coach` answers also carry `audioKey` and `duration` (what went out, playable).
+- A brain decline's `note` is Coach Angela's own redirect (first person); the crisis `note` is the fixed safety message. Neither is voiced.
+- `revise` still uses the plain drafter: `draftSource` becomes `"claude"`; `sources`/`confidence`/`reason` keep the brain's pass.
+- Browser audio: `GET /v1/audio/:key` needs the `Authorization` header, so fetch the clip and play it from a blob URL (`Range` isn't among the allowed request headers).

@@ -28,7 +28,7 @@ const PROFILE = {
   headline: 'Olympic gold medalist · Hockey Hall of Fame', sport: 'Hockey',
   photo_url: 'https://billyatminyawns.github.io/strive/assets/angela1.webp',
   hero_url: 'https://billyatminyawns.github.io/strive/assets/medals.jpg',
-  badges: JSON.stringify(['4× Olympian', '256 games · Team USA', 'IOC member']),
+  badges: JSON.stringify(['4× Olympian', '256 games · Team USA', 'IOC member 2010–18']),
 };
 
 // `angela` is real: everything starts as a draft awaiting her. `angela-review` is the App Review /

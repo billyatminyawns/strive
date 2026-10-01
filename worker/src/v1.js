@@ -1,12 +1,15 @@
-/* STRIVE API v1 — backend for the native iOS app. Contract: docs/API-v1.md.
-   D1 (binding DB) holds every row, keyed by athlete_id so tenants never mix; KV (binding AUDIO)
-   holds voice clips (see voice.js). Fan routes only ever read approved content: published drops,
-   answered/instant replies and an approved bio. */
+/* STRIVE API v1 — backend for the native iOS app and the web app. Contract: docs/API-v1.md (v1.1 adds
+   CORS and the Coach Angela brain). D1 (binding DB) holds every row, keyed by athlete_id so tenants
+   never mix; KV (binding AUDIO) holds voice clips (see voice.js). Fan routes only ever read approved
+   content: published drops, answered/instant replies and an approved bio — plus, when Angela has
+   switched autopilot on, Coach Angela's grounded answers (brain.js), which she can keep or retract.
+   New questions go to the brain (think) in the background; draft.js now only serves revise. */
 
 import { renderVoice, VoiceError } from './voice.js';
 import { isSensitive, matchKb, byRelevance, coverage } from './match.js';
 import { draftReply } from './draft.js';
 import { pushConfigured, pushToUser, pushToFans } from './push.js';
+import { think, isCrisis, CRISIS_TEXT, DECLINE_FALLBACK } from './brain.js';
 
 const HOUR = 3600e3, DAY = 24 * HOUR;
 const QUESTIONS_PER_DAY = 10;
@@ -15,6 +18,17 @@ const DRAFT_STALE = 2 * 60e3;   // background drafts ride ctx.waitUntil, which c
 const PUBLISH_HOUR_UTC = 14;    // must match the cron in wrangler.toml
 const PUBLISH_GAP = 20 * HOUR;
 const MAX_STORY_AUDIO = 20 * 1024 * 1024;
+
+// browsers (the web app) — ALLOWED_ORIGINS plus local dev; requests without an Origin are untouched
+const DEV_ORIGINS = ['http://localhost:8642', 'http://127.0.0.1:8642'];
+const PREFLIGHT = {
+  'access-control-allow-methods': 'GET, POST, PATCH, DELETE, OPTIONS',
+  'access-control-allow-headers': 'authorization, content-type',
+  'access-control-max-age': '86400',
+};
+
+const BRAIN_FAILED = "Coach Angela couldn't get to this one — answer it yourself.";
+const RETRACTED_REASON = 'You retracted this autopilot answer — rewrite it or approve it.';
 
 const FREE_PROMPT = {
   id: 'free', title: 'Anything on your mind', src: 'YOUR CALL',
@@ -91,22 +105,42 @@ const dropOut = d => ({
 
 function noteFor(status, a) {
   const name = a.first_name;
-  if (status === 'pending') return `With ${name} — she reviews every answer before it's sent.`;
+  if (status === 'pending') {
+    return a.autopilot_live ? `With ${name} — her AI Coach answers what her public record covers; she answers the rest herself.`
+      : `With ${name} — she reviews every answer before it's sent.`;
+  }
   if (status === 'declined') return `${name} passed on this one — she answers what she can speak to best.`;
   if (status === 'guarded') return `Strive doesn't send medical, betting or legal questions to ${name}. `
     + 'For health, legal or money decisions, please talk to a qualified professional.';
   return null;
 }
 
-const questionOut = (q, a) => ({
-  id: q.id, text: q.text, status: q.status, answer: q.answer ?? null, audioKey: q.audio_key ?? null, duration: q.duration ?? null,
-  note: noteFor(q.status, a), createdAt: q.created_at, answeredAt: q.answered_at ?? null, saved: !!q.saved,
-});
+// a stored note (the crisis message, Coach Angela's decline, a retraction) replaces the status default
+const noteOut = (q, a) => (q.note && (q.status === 'guarded' || q.status === 'pending') ? q.note : noteFor(q.status, a));
+
+const answeredBy = q => (q.status === 'instant' ? 'library' : q.status === 'answered' ? q.answered_by || 'angela' : null);
+
+const questionOut = (q, a) => {
+  const by = answeredBy(q);
+  return {
+    id: q.id, text: q.text, status: q.status, answer: q.answer ?? null, audioKey: q.audio_key ?? null, duration: q.duration ?? null,
+    note: noteOut(q, a), createdAt: q.created_at, answeredAt: q.answered_at ?? null, saved: !!q.saved,
+    answeredBy: by, sources: by === 'coach' ? parseList(q.sources) : [],
+  };
+};
 
 const studioQuestionOut = q => ({
   id: q.id, text: q.text, fanName: q.kind === 'fan' ? q.fan_name ?? null : null, kind: q.kind,
   draft: q.draft || '', draftSource: q.draft ? q.draft_source : 'none',
   drafting: !!q.drafting && Date.now() - (q.drafting_at || 0) < DRAFT_STALE, createdAt: q.created_at,
+  sources: parseList(q.sources), confidence: q.confidence ?? null, reason: q.reason ?? null,
+});
+
+// audioKey/duration go beyond the contract's list so she can hear exactly what went out in her voice
+const coachAnswerOut = q => ({
+  id: q.id, text: q.text, answer: q.answer, sources: parseList(q.sources), confidence: q.confidence ?? null,
+  reviewed: !!q.reviewed, answeredAt: q.answered_at, fanName: q.fan_name ?? null,
+  audioKey: q.audio_key ?? null, duration: q.duration ?? null,
 });
 
 const notificationOut = (n, readAt) => ({
@@ -114,7 +148,7 @@ const notificationOut = (n, readAt) => ({
 });
 
 const bioOut = a => ({ text: a.bio_text, status: a.bio_status, audioKey: a.bio_audio_key ?? null, duration: a.bio_duration ?? null });
-const settingsOut = a => ({ paused: !!a.paused, guardTopics: !!a.guard_topics, guardDecline: !!a.guard_decline });
+const settingsOut = a => ({ paused: !!a.paused, guardTopics: !!a.guard_topics, guardDecline: !!a.guard_decline, autopilot: !!a.autopilot });
 const storyOut = s => ({
   id: s.id, promptId: s.prompt_id ?? null, title: s.title, transcript: s.transcript, duration: s.duration ?? null, createdAt: s.created_at,
 });
@@ -155,24 +189,93 @@ function nextPublishAt(lastPublishedAt, now) {
   return slot;
 }
 
+// her newest library answers; byRelevance picks the ones a draft or the brain gets to see
+const kbGrounding = (env, athleteId) => stmt(env, 'SELECT question, answer FROM kb WHERE athlete_id = ? ORDER BY created_at DESC LIMIT 300', athleteId);
+
 async function loadGrounding(env, athleteId, question) {
   const [kb, stories] = await env.DB.batch([
-    stmt(env, 'SELECT question, answer FROM kb WHERE athlete_id = ? ORDER BY created_at DESC LIMIT 300', athleteId),
+    kbGrounding(env, athleteId),
     stmt(env, `SELECT title, transcript FROM stories WHERE athlete_id = ? AND transcript != '' ORDER BY created_at DESC LIMIT 5`, athleteId),
   ]);
   return { answers: byRelevance(question, kb.results).slice(0, 8), stories: stories.results };
 }
 
-async function backgroundDraft(env, a, questionId, text) {
-  let draft = null;
+/* Coach Angela's brain on a new pending fan question (rides ctx.waitUntil). Every write below is
+   guarded by status = 'pending' AND drafting = 1, so whatever Angela did meanwhile (approve, decline,
+   revise) wins — and drafting clears on every outcome: answer, review, decline, refusal or error. */
+async function backgroundBrain(env, a, q) {
+  let out = null;
   try {
-    draft = await draftReply(env, { athlete: a, question: text, grounding: await loadGrounding(env, a.id, text), timeout: 20e3, maxRetries: 0 });
+    const [kb, thread] = await env.DB.batch([
+      kbGrounding(env, a.id),
+      // the fan's thread so far, newest first; guardrail and crisis exchanges stay out of it
+      stmt(env, `SELECT text, status, answer FROM questions WHERE user_id = ? AND id != ? AND status != 'guarded'
+        ORDER BY created_at DESC, id DESC LIMIT 6`, q.user_id, q.id),
+    ]);
+    const history = thread.results.reverse().flatMap(p => [
+      { role: 'fan', text: p.text },
+      ...(p.answer && (p.status === 'answered' || p.status === 'instant') ? [{ role: 'angela', text: p.answer }] : []),
+    ]).slice(-6);
+    const approved = byRelevance(q.text, kb.results).slice(0, 10).map(k => ({ q: k.question, a: k.answer }));
+    out = await think(env, { question: q.text, history, approved, autopilot: !!a.autopilot });
   } catch (e) {
-    console.error('background draft failed', questionId, e && e.status, e && e.message);
+    console.error('brain failed', q.id, e && e.status, e && e.message);
   }
-  // drafting = 1 guard: a revise that landed meanwhile wins
-  await run(env, `UPDATE questions SET draft = ?, draft_source = ?, drafting = 0 WHERE id = ? AND status = 'pending' AND drafting = 1`,
-    draft || '', draft ? 'claude' : 'none', questionId);
+  try {
+    await settleBrain(env, a, q, out);
+  } catch (e) {
+    console.error('brain result not saved', q.id, e && e.stack || e);
+  }
+}
+
+async function settleBrain(env, a, q, out) {
+  const meta = [JSON.stringify(out && out.sources || []), out ? out.confidence ?? null : null];
+  let reason = out ? out.reason || null : BRAIN_FAILED;
+  if (out && (out.route === 'decline' || out.route === 'crisis')) {
+    // never voiced: the fan sees the text as the guarded note
+    await run(env, `UPDATE questions SET status = 'guarded', note = ?, sources = ?, confidence = ?, reason = ?, drafting = 0
+      WHERE id = ? AND status = 'pending' AND drafting = 1`,
+    out.route === 'crisis' ? CRISIS_TEXT : out.reply || DECLINE_FALLBACK, ...meta, reason, q.id);
+    return;
+  }
+  if (out && out.route === 'answer' && out.auto && out.reply) {
+    const sent = await sendCoachAnswer(env, a, q, out, meta);
+    if (sent === true) return;
+    reason = [reason, sent].filter(Boolean).join(' · ');   // why it waits for her after all
+  }
+  // review: the brain's reply becomes her draft (empty when it passed or failed — she writes it)
+  await run(env, `UPDATE questions SET draft = ?, draft_source = ?, sources = ?, confidence = ?, reason = ?, drafting = 0
+    WHERE id = ? AND status = 'pending' AND drafting = 1`,
+  out && out.reply || '', out && out.reply ? 'coach' : 'none', ...meta, reason, q.id);
+}
+
+/* Autopilot: voice the reply, mark it answered by Coach Angela, tell the fan. → true once it went
+   out, otherwise why it didn't (the caller files it for her review instead). */
+async function sendCoachAnswer(env, a, q, out, [sources, confidence]) {
+  let voice;
+  try {
+    voice = await renderVoice(env, out.reply);
+  } catch (e) {
+    console.error('coach voice failed', q.id, e && e.status, e && e.message);
+    return 'Voice render failed';
+  }
+  const now = Date.now();
+  const title = `${a.coach_name} answered`;
+  const [res] = await env.DB.batch([
+    // her switch is read again here: turning autopilot off also stops answers still in flight
+    stmt(env, `UPDATE questions SET status = 'answered', answer = ?, audio_key = ?, duration = ?, answered_at = ?, answered_by = 'coach',
+        sources = ?, confidence = ?, reason = ?, reviewed = 0, note = NULL, drafting = 0
+      WHERE id = ? AND status = 'pending' AND drafting = 1 AND EXISTS (SELECT 1 FROM athletes WHERE id = ? AND autopilot = 1)`,
+    out.reply, voice.audioKey, voice.duration, now, sources, confidence, out.reason || null, q.id, a.id),
+    // same transaction, and only if that landed (a fan who deleted their account meanwhile gets nothing)
+    stmt(env, `INSERT INTO notifications (id, athlete_id, user_id, text, sub, link, created_at)
+      SELECT ?, ?, ?, ?, ?, 'ask', ? WHERE EXISTS (SELECT 1 FROM questions WHERE id = ? AND answered_by = 'coach' AND answered_at = ?)`,
+    newId('n'), a.id, q.user_id, title, q.text, now, q.id, now),
+  ]);
+  // nothing changed: Angela got to it first (then the review write is a no-op too) or switched autopilot off
+  if (!res.meta.changes) return 'Autopilot was switched off before it sent';
+  await pushToUser(env, q.user_id, { title, body: q.text, link: 'ask' });
+  return true;
 }
 
 /* ---------- auth ---------- */
@@ -190,6 +293,8 @@ async function authenticate(c, role) {
     notifs_read_at: row.u_notifs_read_at, created_at: row.u_created_at,
   };
   c.athlete = row;
+  // Coach Angela answers on her own only when the server allows it AND Angela switched it on
+  row.autopilot_live = c.env.AUTOPILOT_MODE === 'grounded' && !!c.env.ANTHROPIC_API_KEY && !!row.autopilot;
   if (role !== 'any' && c.user.role !== role) {
     fail(403, role === 'athlete' ? 'Only the athlete can use the studio.' : 'This is only available to fans.');
   }
@@ -222,7 +327,11 @@ async function athleteForKey(env, key) {
 /* ---------- public ---------- */
 
 async function getConfig({ env }) {
-  return json({ drafting: !!env.ANTHROPIC_API_KEY, voice: !!env.FISH_API_KEY, push: pushConfigured(env), minBuild: Number(env.MIN_BUILD) || 1 });
+  return json({
+    drafting: !!env.ANTHROPIC_API_KEY, voice: !!env.FISH_API_KEY, push: pushConfigured(env), minBuild: Number(env.MIN_BUILD) || 1,
+    // the server side of autopilot; Angela's own switch is in her studio settings
+    autopilot: env.AUTOPILOT_MODE === 'grounded' && !!env.ANTHROPIC_API_KEY,
+  });
 }
 
 async function authFan(c) {
@@ -415,32 +524,44 @@ async function askQuestion(c) {
   const b = await body(c);
   const text = typeof b.text === 'string' ? b.text.replace(/\s+/g, ' ').trim() : '';
   if (!text || text.length > 300) fail(400, 'Questions must be 1–300 characters.');
-  if (a.paused) fail(409, `${a.first_name} isn't taking new questions right now — check back soon.`);
+  // crisis language always gets the safety message — even while paused or past the daily limit (up to
+  // twice it): it never reaches Angela, Claude or the voice, so nothing is spent, and it must not bounce
+  const crisis = isCrisis(text);
+  if (a.paused && !crisis) fail(409, `${a.first_name} isn't taking new questions right now — check back soon.`);
   const now = Date.now();
   const [recent, kb] = await env.DB.batch([
     stmt(env, 'SELECT COUNT(*) AS n FROM questions WHERE user_id = ? AND created_at > ?', user.id, now - DAY),
     stmt(env, 'SELECT id, question, answer, keys, audio_key, duration FROM kb WHERE athlete_id = ?', a.id),
   ]);
-  if (recent.results[0].n >= QUESTIONS_PER_DAY) {
+  const today = recent.results[0].n;
+  if (today >= QUESTIONS_PER_DAY && !(crisis && today < 2 * QUESTIONS_PER_DAY)) {
     fail(429, `That's ${QUESTIONS_PER_DAY} questions today, the daily limit. Ask again tomorrow.`);
   }
 
   const q = {
-    id: newId('q'), text, status: 'pending', answer: null, audio_key: null, duration: null, kb_id: null,
-    drafting: 0, drafting_at: null, saved: 0, created_at: now, answered_at: null,
+    id: newId('q'), user_id: user.id, text, status: 'pending', answer: null, audio_key: null, duration: null, kb_id: null,
+    drafting: 0, drafting_at: null, saved: 0, created_at: now, answered_at: null, answered_by: null, note: null,
   };
-  if (a.guard_decline && isSensitive(text)) {
+  if (crisis) {
+    Object.assign(q, { status: 'guarded', note: CRISIS_TEXT });
+  } else if (a.guard_decline && isSensitive(text)) {
     q.status = 'guarded';
   } else {
     const hit = matchKb(text, kb.results.map(k => ({ ...k, keys: parseList(k.keys) })));
-    if (hit) Object.assign(q, { status: 'instant', answer: hit.answer, audio_key: hit.audio_key, duration: hit.duration, kb_id: hit.id, answered_at: now });
-    else if (env.ANTHROPIC_API_KEY) Object.assign(q, { drafting: 1, drafting_at: now });
+    if (hit) {
+      Object.assign(q, {
+        status: 'instant', answer: hit.answer, audio_key: hit.audio_key, duration: hit.duration, kb_id: hit.id, answered_at: now, answered_by: 'library',
+      });
+    } else if (env.ANTHROPIC_API_KEY) {
+      Object.assign(q, { drafting: 1, drafting_at: now });
+    }
   }
   await run(env, `INSERT INTO questions (id, athlete_id, user_id, kind, text, status, answer, audio_key, duration, draft, draft_source,
-      drafting, drafting_at, kb_id, saved, created_at, answered_at)
-    VALUES (?, ?, ?, 'fan', ?, ?, ?, ?, ?, '', 'none', ?, ?, ?, 0, ?, ?)`,
-  q.id, a.id, user.id, text, q.status, q.answer, q.audio_key, q.duration, q.drafting, q.drafting_at, q.kb_id, now, q.answered_at);
-  if (q.drafting) c.ctx.waitUntil(backgroundDraft(env, a, q.id, text));
+      drafting, drafting_at, kb_id, saved, created_at, answered_at, answered_by, note)
+    VALUES (?, ?, ?, 'fan', ?, ?, ?, ?, ?, '', 'none', ?, ?, ?, 0, ?, ?, ?, ?)`,
+  q.id, a.id, user.id, text, q.status, q.answer, q.audio_key, q.duration, q.drafting, q.drafting_at, q.kb_id, now, q.answered_at,
+  q.answered_by, q.note);
+  if (q.drafting) c.ctx.waitUntil(backgroundBrain(env, a, q));
   return json({ question: questionOut(q, a) }, 201);
 }
 
@@ -511,7 +632,8 @@ async function approveQuestion(c) {
   const answer = str((await body(c)).text, 'The answer', 1200, { collapse: false });
   const { audioKey, duration } = await renderVoice(env, answer);   // throws before anything changes
   const now = Date.now();
-  const done = await one(env, `UPDATE questions SET status = 'answered', answer = ?, audio_key = ?, duration = ?, answered_at = ?, drafting = 0
+  const done = await one(env, `UPDATE questions SET status = 'answered', answer = ?, audio_key = ?, duration = ?, answered_at = ?, drafting = 0,
+      answered_by = 'angela', note = NULL
     WHERE id = ? AND status = 'pending' RETURNING id`, answer, audioKey, duration, now, q.id);
   if (!done) fail(409, "This question isn't in your queue anymore.");
   const toFan = q.kind === 'fan' && q.user_id;
@@ -527,7 +649,54 @@ async function approveQuestion(c) {
 
 async function declineQuestion(c) {
   const q = await pendingQuestion(c);
-  await run(c.env, `UPDATE questions SET status = 'declined', drafting = 0 WHERE id = ? AND status = 'pending'`, q.id);
+  await run(c.env, `UPDATE questions SET status = 'declined', drafting = 0, note = NULL WHERE id = ? AND status = 'pending'`, q.id);
+  return json({ ok: true });
+}
+
+/* ---------- Coach Angela oversight: what autopilot sent, and her keep / retract ---------- */
+
+async function studioCoach(c) {
+  const rows = await all(c.env, `SELECT q.*, u.name AS fan_name FROM questions q LEFT JOIN users u ON u.id = q.user_id
+    WHERE q.athlete_id = ? AND q.status = 'answered' AND q.answered_by = 'coach' ORDER BY q.answered_at DESC, q.id DESC LIMIT 50`, c.athlete.id);
+  return json({ answers: rows.map(coachAnswerOut) });
+}
+
+async function coachAnswer(c, verb) {
+  const q = await one(c.env, 'SELECT * FROM questions WHERE id = ? AND athlete_id = ?', c.params.id, c.athlete.id);
+  if (!q) fail(404, 'Question not found.');
+  if (q.status !== 'answered' || q.answered_by !== 'coach') fail(409, `Only Coach Angela's autopilot answers can be ${verb}.`);
+  return q;
+}
+
+// keeping one is approving it: it's marked reviewed and joins the instant-answer library (once)
+async function keepCoachAnswer(c) {
+  const { env, athlete: a } = c;
+  const q = await coachAnswer(c, 'kept');
+  const [res] = await env.DB.batch([
+    stmt(env, `UPDATE questions SET reviewed = 1 WHERE id = ? AND status = 'answered' AND answered_by = 'coach'`, q.id),
+    stmt(env, `INSERT INTO kb (id, athlete_id, question, answer, keys, audio_key, duration, source_question_id, created_at)
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM kb WHERE source_question_id = ?)
+        AND EXISTS (SELECT 1 FROM questions WHERE id = ? AND status = 'answered' AND answered_by = 'coach')`,
+    newId('kb'), a.id, q.text, q.answer, q.kb_keys || '[]', q.audio_key, q.duration, q.id, Date.now(), q.id, q.id),
+  ]);
+  if (!res.meta.changes) fail(409, "Only Coach Angela's autopilot answers can be kept.");   // retracted meanwhile
+  return json({ ok: true });
+}
+
+// back to her queue with the old answer as the draft; the fan's reply (and its audio) is withdrawn
+async function retractCoachAnswer(c) {
+  const { env, athlete: a } = c;
+  const q = await coachAnswer(c, 'retracted');
+  const [res] = await env.DB.batch([
+    stmt(env, `UPDATE questions SET status = 'pending', draft = answer, draft_source = 'coach', answer = NULL, audio_key = NULL,
+        duration = NULL, answered_at = NULL, answered_by = NULL, reviewed = 0, drafting = 0, note = ?, reason = ?
+      WHERE id = ? AND status = 'answered' AND answered_by = 'coach'`,
+    `${a.first_name} is taking another look at this one.`, RETRACTED_REASON, q.id),
+    // a kept answer leaves the library too
+    stmt(env, `DELETE FROM kb WHERE source_question_id = ? AND NOT EXISTS (SELECT 1 FROM questions WHERE id = ? AND status = 'answered')`,
+      q.id, q.id),
+  ]);
+  if (!res.meta.changes) fail(409, "Only Coach Angela's autopilot answers can be retracted.");
   return json({ ok: true });
 }
 
@@ -640,13 +809,13 @@ async function getSettings(c) {
 async function patchSettings(c) {
   const b = await body(c);
   const sets = [], binds = [];
-  for (const [field, col] of [['paused', 'paused'], ['guardTopics', 'guard_topics'], ['guardDecline', 'guard_decline']]) {
+  for (const [field, col] of [['paused', 'paused'], ['guardTopics', 'guard_topics'], ['guardDecline', 'guard_decline'], ['autopilot', 'autopilot']]) {
     if (b[field] === undefined) continue;
     sets.push(`${col} = ?`);
     binds.push(bool(b[field], field) ? 1 : 0);
   }
   const a = sets.length
-    ? await one(c.env, `UPDATE athletes SET ${sets.join(', ')} WHERE id = ? RETURNING paused, guard_topics, guard_decline`, ...binds, c.athlete.id)
+    ? await one(c.env, `UPDATE athletes SET ${sets.join(', ')} WHERE id = ? RETURNING paused, guard_topics, guard_decline, autopilot`, ...binds, c.athlete.id)
     : c.athlete;
   return json(settingsOut(a));
 }
@@ -751,6 +920,9 @@ const ROUTES = [
   ['POST', '/v1/studio/questions/:id/approve', 'athlete', approveQuestion],
   ['POST', '/v1/studio/questions/:id/decline', 'athlete', declineQuestion],
   ['POST', '/v1/studio/questions/:id/revise', 'athlete', reviseQuestion],
+  ['POST', '/v1/studio/questions/:id/keep', 'athlete', keepCoachAnswer],
+  ['POST', '/v1/studio/questions/:id/retract', 'athlete', retractCoachAnswer],
+  ['GET', '/v1/studio/coach', 'athlete', studioCoach],
   ['POST', '/v1/studio/preview', 'athlete', preview],
   ['GET', '/v1/studio/drops', 'athlete', studioDrops],
   ['POST', '/v1/studio/drops', 'athlete', createDrop],
@@ -770,7 +942,19 @@ const ROUTES = [
   method, role, handler, re: new RegExp('^' + path.replace(/:(\w+)/g, '(?<$1>[^/]+)') + '$'),
 }));
 
+// CORS: every /v1 response (errors, 404/405 and audio included) names an allowed Origin back; unlisted
+// origins get no Access-Control-Allow-Origin. Vary: Origin always, since the headers depend on it.
 export async function handleV1(request, env, ctx) {
+  const origin = request.headers.get('origin');
+  const allowed = origin && ((env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).includes(origin) || DEV_ORIGINS.includes(origin));
+  const cors = allowed ? { 'access-control-allow-origin': origin, vary: 'Origin' } : { vary: 'Origin' };
+  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: allowed ? { ...cors, ...PREFLIGHT } : cors });
+  const res = await routeV1(request, env, ctx);
+  for (const [k, v] of Object.entries(cors)) res.headers.set(k, v);
+  return res;
+}
+
+async function routeV1(request, env, ctx) {
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, '');
   const method = request.method === 'HEAD' ? 'GET' : request.method;

@@ -46,12 +46,15 @@
           <div class="card" style="padding:16px;display:flex;flex-direction:column;gap:14px">
             <div>
               ${kicker('GUARDRAILS')}
-              <div style="font-size:11.5px;color:var(--dim2);margin-top:4px;line-height:1.5">Your Coach never says anything you haven't written or approved.</div>
+              <div style="font-size:11.5px;color:var(--dim2);margin-top:4px;line-height:1.5">Your Coach only says what you've said on the record or approved — switch autopilot off anytime.</div>
             </div>
-            ${guardRow('Approve every reply before it sends', 'Required for personal replies', 'review', s.guards.review)}
+            ${guardRow('Approve every reply before it sends', Coach.guardSub(s.guards.review), 'review', s.guards.review)}
+            ${Coach.serverLine(s)}
             ${guardRow('Stick to approved topics', 'Hockey · leadership · career · training', 'topics', s.guards.topics)}
             ${guardRow('Auto-decline sensitive asks', 'Medical, betting & legal questions get a polite pass', 'decline', s.guards.decline, true)}
           </div>
+
+          ${Coach.log(s, true)}
 
           <div class="card" style="padding:16px;display:flex;flex-direction:column;gap:12px">
             ${kicker('SCHEDULED')}

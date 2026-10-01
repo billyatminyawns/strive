@@ -1,7 +1,8 @@
 {
-  "name": "STRIVE — Train with the greatest",
-  "short_name": "STRIVE",
-  "description": "Train with elite athletes. Ask questions, hear answers back in their real voice.",
+  "id": "./",
+  "name": "Strive",
+  "short_name": "Strive",
+  "description": "Voice drops from Olympic champion Angela Ruggiero, and your questions answered back in her voice.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

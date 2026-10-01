@@ -1,6 +1,9 @@
 -- STRIVE API v1 — D1 schema (binding DB, database strive-db). Safe to re-apply.
 --   npx wrangler d1 execute strive-db --remote --file schema.sql
 -- Every tenant-scoped row carries athlete_id. Timestamps are ms since epoch.
+-- v1.1 (10/1/26, Coach Angela brain) added athletes.autopilot, questions.answered_by/note/sources/
+-- confidence/reason/reviewed and draft_source 'coach'. CREATE IF NOT EXISTS won't add them to an older
+-- database (and SQLite can't alter a CHECK): production D1 is created fresh from this file by go-live.sh.
 
 CREATE TABLE IF NOT EXISTS athletes (
   id            TEXT PRIMARY KEY,
@@ -19,7 +22,8 @@ CREATE TABLE IF NOT EXISTS athletes (
   paused        INTEGER NOT NULL DEFAULT 0,
   guard_topics  INTEGER NOT NULL DEFAULT 1,
   guard_decline INTEGER NOT NULL DEFAULT 1,
-  created_at    INTEGER NOT NULL
+  created_at    INTEGER NOT NULL,
+  autopilot     INTEGER NOT NULL DEFAULT 0                 -- her own switch: Coach Angela may answer on its own
 );
 
 CREATE TABLE IF NOT EXISTS invite_codes (
@@ -60,14 +64,20 @@ CREATE TABLE IF NOT EXISTS questions (
   audio_key    TEXT,
   duration     REAL,
   draft        TEXT NOT NULL DEFAULT '',
-  draft_source TEXT NOT NULL DEFAULT 'none' CHECK (draft_source IN ('claude', 'starter', 'none')),
+  draft_source TEXT NOT NULL DEFAULT 'none' CHECK (draft_source IN ('claude', 'coach', 'starter', 'none')),
   drafting     INTEGER NOT NULL DEFAULT 0,
   drafting_at  INTEGER,
   kb_keys      TEXT NOT NULL DEFAULT '[]',                 -- key phrases carried into the library on approval
   kb_id        TEXT,                                       -- library entry an instant reply came from
   saved        INTEGER NOT NULL DEFAULT 0,
   created_at   INTEGER NOT NULL,
-  answered_at  INTEGER
+  answered_at  INTEGER,
+  answered_by  TEXT CHECK (answered_by IN ('angela', 'library', 'coach')),   -- NULL while unanswered
+  note         TEXT,                                       -- fan-facing note replacing the status default (crisis, brain decline, retract)
+  sources      TEXT NOT NULL DEFAULT '[]',                 -- JSON [{id, title, outlet, date, url}] the brain cited
+  confidence   REAL,                                       -- the brain's 0–1 confidence; NULL if it never ran
+  reason       TEXT,                                       -- the brain's one-line reason (why it needs Angela)
+  reviewed     INTEGER NOT NULL DEFAULT 0                  -- an autopilot answer Angela kept
 );
 CREATE INDEX IF NOT EXISTS questions_user ON questions (user_id, created_at);
 CREATE INDEX IF NOT EXISTS questions_queue ON questions (athlete_id, status, created_at);

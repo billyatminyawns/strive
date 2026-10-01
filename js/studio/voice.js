@@ -196,13 +196,15 @@
           <div class="card" style="padding:20px;display:flex;flex-direction:column;gap:14px">
             <div>
               <div style="font-size:14.5px;font-weight:800">Guardrails</div>
-              <div style="font-size:11.5px;color:var(--dim2);margin-top:3px;line-height:1.5">Angela's voice never says anything she hasn't written or approved.</div>
+              <div style="font-size:11.5px;color:var(--dim2);margin-top:3px;line-height:1.5">Coach Angela only says what Angela has said on the record or approved — and she can switch autopilot off anytime.</div>
             </div>
-            ${guardRow('Approve every reply before it sends', 'Required for personal replies', 'review', s.guards.review)}
+            ${guardRow('Approve every reply before it sends', Coach.guardSub(s.guards.review), 'review', s.guards.review)}
+            ${Coach.serverLine(s)}
             ${guardRow('Stick to approved topics', 'Hockey · leadership · career · training', 'topics', s.guards.topics)}
             ${guardRow('Auto-decline sensitive asks', 'Medical, betting & legal questions get a polite pass', 'decline', s.guards.decline)}
             <div style="background:var(--screen);border:1px solid var(--line2);border-radius:12px;padding:13px 15px;font-size:11.5px;color:var(--sub);line-height:1.6;margin-top:auto">Every generated clip is watermarked and logged. Angela can revoke her voice model at any time — it's hers, contractually and technically.</div>
           </div>
+          ${Coach.log(s)}
         </div>`;
     },
   };

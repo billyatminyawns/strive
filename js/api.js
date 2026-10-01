@@ -1,5 +1,6 @@
 /* STRIVE — live intelligence client. Two paths, graceful fallback:
-   A) Backend (Cloudflare Worker): Claude drafts + WellSaid voice; keys live server-side.
+   A) Backend (Cloudflare Worker): Coach Angela's brain (/ask — grounded answers + routing),
+      Claude drafts (/draft) and Angela's cloned voice (/voice); keys live server-side.
    B) BYOK backup: a browser-local Anthropic key (localStorage) calls api.anthropic.com
       directly for drafts. Voice for novel lines still needs the backend; otherwise the
       app falls back to on-device speech. No key, no backend → template drafts as before. */
@@ -7,7 +8,9 @@
   'use strict';
 
   // Deployed worker origin ('' disables path A).
-  const BASE = 'https://strive-api.billyatminyawns.workers.dev';
+  // localStorage 'strive-api-base' points this browser at a local worker for testing.
+  const BASE = (function () { try { return localStorage.getItem('strive-api-base'); } catch (e) { return null; } })()
+    || 'https://strive-api.billyatminyawns.workers.dev';
   const BYOK_STORAGE = 'strive-anthropic-key';
 
   /* persona for BYOK drafts — mirrors the worker's (public by design; contains no secrets) */
@@ -35,6 +38,7 @@ RULES:
   const pendingVoice = {};
 
   let workerOk = null; // null = unchecked, true/false after checkWorker()
+  let brain = null;    // /health's brain status: {version, entries, autopilot, configured} or null
 
   function post(path, body, timeoutMs) {
     const ctl = new AbortController();
@@ -52,6 +56,7 @@ RULES:
     get enabled() { return !!BASE; },                       // worker path configured
     get active() { return !!BASE || !!this.byokKey; },      // any live-draft path available
     get workerOk() { return workerOk; },
+    get brain() { return brain; },             // what the server's brain has loaded
 
     /* ---------- BYOK (path B) ---------- */
     get byokKey() {
@@ -70,13 +75,26 @@ RULES:
       const ctl = new AbortController();
       const t = setTimeout(() => ctl.abort(), 6000);
       return fetch(BASE + '/health', { signal: ctl.signal })
-        .then(r => r.ok).catch(() => false)
-        .then(ok => {
+        .then(r => (r.ok ? r.json() : null)).catch(() => null)
+        .then(d => {
           clearTimeout(t);
-          workerOk = ok;
+          workerOk = !!(d && d.ok);
+          brain = (d && d.brain) || null;
           if (window.App) App.render();
-          return ok;
+          return workerOk;
         });
+    },
+
+    /* ---------- Coach Angela's brain: one call decides answer / review / decline / crisis ----------
+       ctx: {history:[{role:'fan'|'angela', text}], approved:[{q,a}], autopilot:boolean}
+       → the decision object, or null (brain offline/unconfigured → caller queues for Angela). */
+    ask(question, ctx) {
+      if (!BASE || (brain && !brain.configured)) return Promise.resolve(null);
+      const c = ctx || {};
+      return post('/ask', { question, history: c.history || [], approved: c.approved || [], autopilot: !!c.autopilot }, 40000)
+        .then(r => (r.ok ? r.json() : null))
+        .then(d => (d && d.route ? d : null))
+        .catch(() => null);
     },
 
     /* ---------- drafting: worker first, then BYOK, then null (caller keeps template) ---------- */

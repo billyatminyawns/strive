@@ -10,3 +10,6 @@ ios/**/*.xcuserstate
 ios/build/
 out/
 *.xcresult
+
+# raw research runs + Angela review packets (may hold sensitive notes)
+worker/persona/research/

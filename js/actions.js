@@ -14,7 +14,8 @@
     if (id.startsWith('dd-')) { const d = (s.draftDrops || []).find(x => x.id === id); return d && { text: d.script, title: d.title }; }
     if (id.startsWith('draft:')) { const q = s.inbox.find(q => q.id === id.slice(6)); return q && { text: q.draft, title: 'Reply to ' + q.from.split(' ')[0] }; }
     const msg = s.chat.find(m => m.id === id);
-    if (msg) return { text: msg.text, title: 'Voice reply from Angela' };
+    if (msg && msg.retracted) return null;
+    if (msg) return { text: msg.text, title: msg.ai ? 'Coach Angela · AI reply' : 'Voice reply from Angela' };
     return null;
   }
 
@@ -23,6 +24,18 @@
       s.activity.unshift({ t: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), text });
       s.activity = s.activity.slice(0, 20);
     });
+  }
+
+  // what the brain sees of the conversation: the last few fan/Angela turns (no retracted replies)
+  function brainHistory(s) {
+    return s.chat
+      .filter(m => (m.kind === 'q' || (m.kind === 'voice' && !m.retracted)) && m.text)
+      .slice(-7, -1)   // the newest q is the question itself
+      .map(m => ({ role: m.kind === 'q' ? 'fan' : 'angela', text: m.text }));
+  }
+  // answers Angela approved in her studio — the brain's highest-trust grounding
+  function brainApproved(s) {
+    return (s.learnedKb || []).slice(-10).map(k => ({ q: k.q, a: k.a }));
   }
 
   let seq = 100;
@@ -117,8 +130,10 @@
         });
         return;
       }
-      // 2. knowledge base hit → the twin answers instantly (approved words)
-      const kb = Data.findKb(s, q);
+      // 2. knowledge base hit → the twin answers instantly (approved words). With the brain live,
+      //    only answers Angela has confirmed qualify; unconfirmed demo copy goes to the brain instead.
+      const brainLive = !!(window.Api && Api.brain && Api.brain.configured);
+      const kb = Data.findKb(s, q, { verifiedOnly: brainLive });
       if (kb) {
         Store.set(st => {
           st.chat.push({ kind: 'q', text: q });
@@ -135,16 +150,63 @@
         }, 1600);
         return;
       }
-      // 3. new question → Studio inbox, Angela approves, fan gets the reply
+      // 3. new question → Coach Angela's brain decides: answer now (grounded in her verified record,
+      //    autopilot on), draft it into her inbox, or decline. Brain offline → straight to her inbox.
+      if (window.Api && Api.enabled && Api.workerOk !== false && !(Api.brain && !Api.brain.configured)) {
+        Store.set(st => {
+          st.chat.push({ kind: 'q', text: q });
+          st.chat.push({ kind: 'typing' });
+        });
+        const gen = epoch;
+        const now = S();
+        Api.ask(q, { history: brainHistory(now), approved: brainApproved(now), autopilot: !now.guards.review }).then(r => {
+          if (gen !== epoch) return;
+          Store.set(st => { st.chat = st.chat.filter(m => m.kind !== 'typing'); });
+          if (!r) { Actions._queueForAngela(q, { chatPushed: true }); return; }
+          if (r.route === 'crisis') {
+            Store.set(st => { st.chat.push({ kind: 'sys', text: r.reply, crisis: true }); });
+            log('Crisis language in a fan ask — safety message shown');
+            return;
+          }
+          if (r.route === 'decline') {
+            Store.set(st => { st.chat.push({ kind: 'voice', id: uid('c'), text: r.reply, q, when: 'Just now', decline: true, ai: true }); });
+            Api.ensureVoice(r.reply);
+            log('Coach Angela declined an off-limits ask');
+            return;
+          }
+          if (r.route === 'answer' && r.auto && r.reply) {
+            const cid = uid('c');
+            Store.set(st => {
+              st.chat.push({ kind: 'voice', id: cid, text: r.reply, q, when: 'Just now', ai: true, sources: r.sources || [] });
+              st.autoLog = st.autoLog || [];
+              st.autoLog.unshift({ id: uid('a'), chatId: cid, q, reply: r.reply, sources: r.sources || [], reason: r.reason || '', confidence: r.confidence, at: Date.now(), status: 'live' });
+              st.autoLog = st.autoLog.slice(0, 40);
+            });
+            Api.ensureVoice(r.reply);
+            log('Coach Angela answered a new question from your record');
+            return;
+          }
+          Actions._queueForAngela(q, { chatPushed: true, draft: r.reply, brain: { reason: r.reason || '', sources: r.sources || [], confidence: r.confidence } });
+        });
+        return;
+      }
+      Actions._queueForAngela(q);
+    },
+
+    // New question Angela answers herself: lands in her inbox with the best draft available —
+    // the brain's (grounded, with its reason), else a Claude /draft, else the offline template.
+    _queueForAngela(q, opts) {
+      const o = opts || {};
       const qid = uid('q');
-      const liveDraft = window.Api && Api.active;   // worker or browser-local key
+      const liveDraft = !o.draft && window.Api && Api.active;   // worker or browser-local key
       Store.set(st => {
-        st.chat.push({ kind: 'q', text: q });
-        st.chat.push({ kind: 'sys', text: 'Sent to Angela — new questions get her real voice, usually within a day. (In this demo: approve it in the Studio inbox.)' });
+        if (!o.chatPushed) st.chat.push({ kind: 'q', text: q });
+        st.chat.push({ kind: 'sys', text: "Sent to Angela — she reviews Coach Angela's draft and replies, usually within a day. (In this demo: approve it in the Studio inbox.)" });
         st.inbox.unshift({
           id: qid, from: st.fan.name + ' (you)', tier: st.fan.tier, avatar: st.fan.mono, color: st.fan.color,
           text: q, ago: 'Just now', meta: 'That’s you', status: 'draft', similar: 0,
-          draft: Data.draftFor(q, st.inbox.length), fromFan: true, drafting: liveDraft,
+          draft: o.draft || Data.draftFor(q, st.inbox.length), fromFan: true, drafting: liveDraft,
+          aiDrafted: !!o.draft, brain: o.brain || null,
         });
         st.inboxSelected = qid;
         st.pendingAsks.push(qid);
@@ -168,6 +230,31 @@
           });
         });
       }
+    },
+
+    /* ---------- Coach Angela autopilot: Angela keeps or retracts what it sent on its own ---------- */
+    coachKeep(a) {
+      Store.set(st => {
+        const e = (st.autoLog || []).find(x => x.id === a.id);
+        if (!e || e.status !== 'live') return;
+        e.status = 'kept';
+        st.learnedKb.push({ id: 'learned-' + e.id, keys: Data.norm(e.q).trim().split(' ').filter(w => w.length > 4), q: e.q, a: e.reply });
+      });
+      log('Angela kept an autopilot reply — it’s now an approved answer');
+    },
+    coachRetract(a) {
+      const e = (S().autoLog || []).find(x => x.id === a.id);
+      if (!e || e.status !== 'live') return;
+      if (window.Player && Player.state && Player.state.id === e.chatId) Player.stop();
+      Store.set(st => {
+        const ee = st.autoLog.find(x => x.id === a.id);
+        ee.status = 'retracted';
+        const m = st.chat.find(x => x.id === ee.chatId);
+        if (m) m.retracted = true;
+      });
+      // she answers it herself instead: the question goes back into her inbox
+      Actions._queueForAngela(e.q, { chatPushed: true, draft: e.reply, brain: { reason: 'You retracted the autopilot reply — rewrite or approve', sources: e.sources || [], confidence: e.confidence } });
+      log('Angela retracted an autopilot reply and took the question herself');
     },
 
     saveReply(a) {

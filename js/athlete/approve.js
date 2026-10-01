@@ -36,7 +36,8 @@
       <div style="font-size:17.5px;font-weight:700;line-height:1.45">"${esc(q.text)}"</div>
 
       <div style="border-top:1px solid var(--line);padding-top:11px;display:flex;flex-direction:column;gap:8px;flex:1;min-height:0">
-        <span class="k-label" style="font-size:10px;color:var(--lav)">${q.aiDrafted ? 'AI DRAFT · CLAUDE' : 'AI DRAFT'} · FROM YOUR PAST ANSWERS</span>
+        <span class="k-label" style="font-size:10px;color:var(--lav)">${q.brain ? 'COACH ANGELA DRAFT · FROM YOUR RECORD' : (q.aiDrafted ? 'AI DRAFT · CLAUDE' : 'AI DRAFT') + ' · FROM YOUR PAST ANSWERS'}</span>
+        ${q.brain && q.brain.reason ? `<div style="font-size:10.5px;color:var(--dim2);line-height:1.4">${esc(q.brain.reason)}</div>` : ''}
         <div style="font-size:13px;color:var(--sub2);line-height:1.6;overflow:hidden;flex:1;min-height:0;
           -webkit-mask-image:linear-gradient(180deg,#000 72%,transparent);mask-image:linear-gradient(180deg,#000 72%,transparent)">${esc(q.draft)}</div>
       </div>

@@ -100,6 +100,7 @@
               <button class="btn btn-ghost" data-action="toggleEditDraft" data-arg="${arg({ id: sel.id })}">${sel.editing ? 'Done editing' : 'Edit answer'}</button>
               ${sel.status !== 'sent' ? `<button class="btn-quiet" style="padding:11px 12px;font-size:12.5px" data-action="decline" data-arg="${arg({ id: sel.id })}">Decline politely</button>` : ''}
             </div>
+            ${Coach.why(sel)}
             ${sel.flagged ? `<div style="font-size:11.5px;color:var(--papaya);background:rgba(252,164,111,0.07);border:1px solid rgba(252,164,111,0.25);border-radius:10px;padding:10px 13px;line-height:1.5">
               ⚑ Flagged by guardrails — this ask touched a sensitive topic. Your call whether to answer, soften, or pass.</div>` : ''}
           </div>

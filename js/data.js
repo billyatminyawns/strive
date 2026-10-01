@@ -53,30 +53,33 @@
   };
 
   // ---------- knowledge base: approved answers the twin can speak instantly ----------
+  // These five are DEMO COPY, not Angela's confirmed words (e.g. the 6 a.m. routine, the sleepless
+  // night before Nagano). verified:false keeps them off the instant path once Coach Angela's brain
+  // is live; set verified:true only after Angela confirms the answer is true to her.
   const KB = [
     {
-      id: 'kb-reset', keys: ['reset', 'bad shift', 'mistake', 'bounce back from a bad'],
+      id: 'kb-reset', verified: false, keys: ['reset', 'bad shift', 'mistake', 'bounce back from a bad'],
       q: 'How did you reset after a bad shift in big games?',
       a: "Short memory, long habits. I gave myself one length of the bench to be frustrated — then eyes up, next play. The reset is a skill you train, not a mood you wait for.",
     },
     {
-      id: 'kb-nerves', keys: ['nerve', 'nervous', 'anxious', 'anxiety', 'scared', 'pre-game', 'pregame', 'pressure'],
+      id: 'kb-nerves', verified: false, keys: ['nerve', 'nervous', 'anxious', 'anxiety', 'scared', 'pre-game', 'pregame', 'pressure'],
       q: 'How do I handle pre-game nerves?',
       a: "Nerves mean it matters. The night before gold in Nagano I barely slept — so I stopped chasing calm and built a routine I could do scared: same warm-up, same first touch, one cue word. Borrow mine until you build yours.",
     },
     {
-      id: 'kb-gap', keys: ['gap control', 'small rink', 'drill', 'angling'],
+      id: 'kb-gap', verified: false, keys: ['gap control', 'small rink', 'drill', 'angling'],
       q: 'Best drills for gap control on a small rink?',
       a: "A small rink is a gift — less ice to defend if your feet are honest. Work two-touch angling walls, stick on the puck side, and time your gap off their second stride, not their first.",
     },
     {
-      id: 'kb-routine', keys: ['morning routine', 'daily routine', 'start your day', 'wake up'],
+      id: 'kb-routine', verified: false, keys: ['morning routine', 'daily routine', 'start your day', 'wake up'],
       q: "What's your morning routine?",
       a: "Boring and repeatable. Up at six, ten minutes of mobility before coffee, and I write the day's one hard thing on a sticky note. Champions aren't morning people — they're consistency people who happen to be awake.",
     },
     {
       // keys stay multi-word or unambiguous — findKb is substring-based, so bare 'ioc'/'boards' would hijack "mediocre"/"along the boards"
-      id: 'kb-ioc', keys: ['the ioc', 'olympic committee', 'after hockey', 'since hockey', 'retire', 'board member', 'boardroom', 'businesses', 'executive', 'career after', 'life after'],
+      id: 'kb-ioc', verified: false, keys: ['the ioc', 'olympic committee', 'after hockey', 'since hockey', 'retire', 'board member', 'boardroom', 'businesses', 'executive', 'career after', 'life after'],
       q: 'What have you done since hockey?',
       a: "Hockey was chapter one, not the whole book. I served on the IOC as an athlete rep, sat on boards, built companies, and kept collecting degrees along the way. Different rooms, same game: show up prepared, ask the honest question, do the boring work. The rink just taught me first.",
     },
@@ -238,7 +241,8 @@
       learnedKb: [],                    // KB entries added by approving replies (the twin "learning")
       drops: DROPS.map(d => ({ ...d })),
       scheduled: SCHEDULED.map(s => ({ ...s })),
-      guards: { review: true, topics: true, decline: true },
+      guards: { review: false, topics: true, decline: true },   // review off = Coach Angela autopilot (server still gates it)
+      autoLog: [],                      // replies Coach Angela sent on its own, for Angela to keep or retract
       delivery: { warmth: 70, energy: 55, pace: 45 },
       sample: { text: 'Big game tonight — remember, poise beats panic.', ready: false },
       stats: {
@@ -264,9 +268,11 @@
     return toks.some(t => SENSITIVE_WORDS.includes(t) || SENSITIVE_PREFIX.some(p => t.startsWith(p)));
   }
 
-  function findKb(state, q) {
+  // opts.verifiedOnly: skip seed answers Angela hasn't confirmed (her studio approvals always count)
+  function findKb(state, q, opts) {
     const n = norm(q);
-    const all = KB.concat(state.learnedKb || []);
+    const seeds = opts && opts.verifiedOnly ? KB.filter(e => e.verified) : KB;
+    const all = seeds.concat(state.learnedKb || []);
     let best = null, bestScore = 0;
     for (const e of all) {
       let score = 0;

@@ -4,7 +4,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { PERSONA, TOPICS_RULE } from './persona.js';
 
-const DEFAULT_MODEL = 'claude-opus-5';
+const DEFAULT_MODEL = 'claude-opus-5-5';
 
 function systemPrompt(athlete, { answers, stories }) {
   let s = PERSONA + (athlete.guard_topics ? '\n' + TOPICS_RULE : '');

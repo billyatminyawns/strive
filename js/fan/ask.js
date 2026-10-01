@@ -6,11 +6,13 @@
   window.Screens = window.Screens || {};
 
   function voiceBubble(m) {
+    if (m.retracted) return `<div class="bubble-sys">Angela retracted this reply and is answering your question herself.</div>`;
     const dur = Player.estimate(m.text, 1);
+    const src = m.ai && Coach.sources(m.sources, 2);
     return `<div class="bubble-v popin">
       <div style="display:flex;align-items:center;gap:7px">
         ${ava(Data.IMG.head, 20)}
-        <span class="k-label" style="font-size:10.5px;color:var(--dim2)">VOICE REPLY · <span data-dur-for="${m.id}">${fmt(dur)}</span></span>
+        <span class="k-label" style="font-size:10.5px;color:var(--dim2)">${m.ai ? 'COACH ANGELA · AI' : 'VOICE REPLY'} · <span data-dur-for="${m.id}">${fmt(dur)}</span></span>
         <span style="flex:1"></span>
         <button data-action="openReply" data-arg="${arg({ id: m.id })}" title="Open full player"
           style="background:none;border:none;padding:2px;color:var(--dim);display:flex">
@@ -22,6 +24,7 @@
         <div style="flex:1">${wave(m.id, 16, 20, null, 3.5)}</div>
       </div>
       <div style="font-size:12px;color:var(--sub2);line-height:1.55">${esc(m.text)}</div>
+      ${src ? `<div style="font-size:10px;color:var(--dim2);line-height:1.5">From Angela's public record: ${src}</div>` : ''}
     </div>`;
   }
 
@@ -37,17 +40,17 @@
             <div style="font-size:15.5px;font-weight:800">Angela Ruggiero</div>
             <div style="display:flex;align-items:center;gap:6px;margin-top:1px">
               <span style="width:6px;height:6px;border-radius:50%;background:var(--mint);animation:livepulse 2s infinite"></span>
-              <span style="font-size:11px;color:var(--sub2)">Answers in her real voice</span>
+              <span style="font-size:11px;color:var(--sub2)">Coach Angela · AI in Angela's voice</span>
             </div>
           </div>
         </div>
         <div style="text-align:center;font-size:10.5px;color:var(--dim);padding:10px 30px 0;line-height:1.5;flex-shrink:0">
-          Angela's AI voice · every answer is written or approved by her</div>
+          Coach Angela is an AI trained on Angela's own words · new questions go to her</div>
 
         <div class="p-scroll" id="chat-scroll" style="padding:14px 18px;display:flex;flex-direction:column;gap:12px">
           ${s.chat.map(m => {
             if (m.kind === 'q') return `<div class="bubble-q">${esc(m.text)}</div>`;
-            if (m.kind === 'sys') return `<div class="bubble-sys">${esc(m.text)}</div>`;
+            if (m.kind === 'sys') return `<div class="bubble-sys"${m.crisis ? ' style="color:var(--text,#fff);border:1px solid var(--papaya);text-align:left;line-height:1.55"' : ''}>${esc(m.text)}</div>`;
             if (m.kind === 'typing') return `<div style="align-self:flex-start;display:flex;align-items:center;gap:8px;background:var(--card2);border:1px solid var(--line2);border-radius:18px;padding:10px 14px">
               ${[0, 1, 2].map(i => `<span style="width:7px;height:7px;border-radius:50%;background:var(--mint);animation:typing 1.1s ease ${i * 0.18}s infinite"></span>`).join('')}
               <span style="font-size:11px;color:var(--dim);font-weight:700">Angela · voice reply</span></div>`;

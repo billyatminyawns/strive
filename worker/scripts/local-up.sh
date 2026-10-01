@@ -11,6 +11,12 @@
 # Idempotent: every run restarts the server on a fresh copy of the seed (local data is reset).
 # No FISH_API_KEY / ANTHROPIC_API_KEY locally, so voice and drafting are off: approving unedited
 # starter text still works (its clip is in KV); anything needing a fresh render returns 503.
+#
+# STRIVE_LOCAL_BRAIN=mock also starts test/mock-anthropic.mjs (a scripted stand-in for the Claude API,
+# port STRIVE_MOCK_PORT, default 8789) and gives the worker a dummy ANTHROPIC_API_KEY pointed at it,
+# with AUTOPILOT_MODE=grounded — so Coach Angela's autopilot / review / decline paths run end to end
+# for free (keywords in test/mock-anthropic.mjs pick the reply). Nothing reaches api.anthropic.com
+# from /v1. Then: node test/v1-brain.test.mjs. scripts/local-down.sh stops the mock too.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -19,6 +25,9 @@ cd "$(dirname "$0")/.."
 for k in "$STRIVE_TEST_KEY_ANGELA" "$STRIVE_TEST_KEY_REVIEW"; do
   [[ "$k" =~ ^[A-Za-z0-9_-]{16,}$ ]] || { echo "local-up: test keys must be 16+ chars of A-Z a-z 0-9 _ -" >&2; exit 1; }
 done
+BRAIN="${STRIVE_LOCAL_BRAIN:-}"
+[[ -z "$BRAIN" || "$BRAIN" == mock ]] || { echo "local-up: STRIVE_LOCAL_BRAIN must be 'mock' or unset" >&2; exit 1; }
+MOCK_PORT="${STRIVE_MOCK_PORT:-8789}"
 
 PORT="${STRIVE_LOCAL_PORT:-8787}"
 LOG=.wrangler-dev.log
@@ -31,6 +40,9 @@ export WRANGLER_SEND_METRICS=false
 scripts/local-down.sh >/dev/null 2>&1 || true
 if lsof -ti "tcp:$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
   echo "local-up: something else is already listening on port $PORT" >&2; exit 1
+fi
+if [ -n "$BRAIN" ] && lsof -ti "tcp:$MOCK_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+  echo "local-up: something else is already listening on port $MOCK_PORT (set STRIVE_MOCK_PORT)" >&2; exit 1
 fi
 
 rm -rf .wrangler/state   # local D1 + KV only; production data is never touched from here
@@ -45,6 +57,20 @@ echo "local D1 + KV seeded"
   "$STRIVE_TEST_KEY_ANGELA" "$STRIVE_TEST_KEY_REVIEW" > .dev.vars)
 
 mkdir -p .wrangler
+if [ -n "$BRAIN" ]; then
+  # the key is a dummy: every /v1 brain and revise call goes to the mock named here
+  printf "ANTHROPIC_API_KEY=local-mock-not-a-real-key\nANTHROPIC_BASE_URL=http://127.0.0.1:%s\nAUTOPILOT_MODE=grounded\n" "$MOCK_PORT" >> .dev.vars
+  nohup node test/mock-anthropic.mjs "$MOCK_PORT" </dev/null >.wrangler/local-mock.log 2>&1 &
+  echo $! > .wrangler/local-mock.pid
+  disown
+  for _ in $(seq 1 20); do
+    curl -fsS "http://127.0.0.1:$MOCK_PORT/__requests" >/dev/null 2>&1 && break
+    kill -0 "$(cat .wrangler/local-mock.pid)" 2>/dev/null || break
+    sleep 0.5
+  done
+  curl -fsS "http://127.0.0.1:$MOCK_PORT/__requests" >/dev/null 2>&1 \
+    || { echo "local-up: the mock Claude API didn't start — see worker/.wrangler/local-mock.log" >&2; exit 1; }
+fi
 nohup "$WRANGLER" dev --local --port "$PORT" --ip 127.0.0.1 --test-scheduled </dev/null >"$LOG" 2>&1 &
 echo $! > .wrangler/local-dev.pid
 disown
@@ -52,6 +78,7 @@ disown
 for _ in $(seq 1 90); do
   if curl -fsS "http://127.0.0.1:$PORT/v1/config" >/dev/null 2>&1; then
     echo "Strive API v1 is up at http://127.0.0.1:$PORT/v1 (log: worker/$LOG)"
+    [ -z "$BRAIN" ] || echo "Coach Angela brain: mock Claude at http://127.0.0.1:$MOCK_PORT, AUTOPILOT_MODE=grounded (log: worker/.wrangler/local-mock.log)"
     exit 0
   fi
   kill -0 "$(cat .wrangler/local-dev.pid)" 2>/dev/null || break
