@@ -23,11 +23,11 @@ MIN_BUILD = "1"
 [[d1_databases]]
 binding = "DB"
 database_name = "strive-db"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "348e52b6-46cc-439e-b873-845dc1af1aaf"
 
 [[kv_namespaces]]
 binding = "AUDIO"
-id = "00000000000000000000000000000000"
+id = "74506e1025f24325b27fb658216dcb6a"
 
 # Daily drop at 14:00 UTC (7:00 AM Pacific) — keep PUBLISH_HOUR_UTC in src/v1.js in sync.
 [triggers]
