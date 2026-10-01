@@ -2,13 +2,13 @@
    Network-first for pages and code so a deploy shows up on the next open; cache-first for immutable
    media under /assets/. The API lives on another origin and is never cached here.
    MEDIA keeps the demo's cache name so its "Downloads" keep working offline. */
-const SHELL = 'strive-live-v1';
+const SHELL = 'strive-live-v2';
 const MEDIA = 'strive-media-v3';
 
 const FILES = [
   './', './index.html', './manifest.webmanifest',
   './app/app.css', './app/main.js', './app/api.js', './app/state.js', './app/ui.js', './app/player.js',
-  './app/recorder.js', './app/onboard.js', './app/fan.js', './app/studio.js',
+  './app/recorder.js', './app/onboard.js', './app/fan.js', './app/studio.js', './app/signin.js',
   './assets/angela1.webp', './assets/angela2.webp', './assets/medals.jpg', './assets/icon-192.png',
 ];
 

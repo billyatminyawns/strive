@@ -20,6 +20,12 @@ phone, and her approval reaches the fan.
   real stats, drafted drops to approve), **Approve** (swipe or tap; edit, dictate, preview in her
   voice), Capture (record stories that teach her Coach), Coach answers (autopilot oversight),
   Studio settings (guardrails, pause, autopilot, voice bio, pins).
+- **Sign-in follows the account** (6-digit email codes everywhere, "Continue with Google" where
+  Google's window can open). Fans "save their seat" right after joining, so they can get back in on
+  another phone — or in the iPhone Home Screen app, which keeps storage separate from Safari. Angela
+  can link Google/email in Studio settings instead of pasting her studio key. The invite code still
+  gates new accounts. Turn it on with `worker/scripts/setup-signin.sh` (Google OAuth Web client ID +
+  a Resend API key on a verified sending domain); the app shows only the methods that are set up.
 - **Nothing reaches fans until Angela approves it** — seeded starter content waits in her queue.
   When autopilot is on (only after her written OK), Coach Angela answers grounded questions on
   its own, labelled *AI Coach* with its sources, and she can keep or retract each one.

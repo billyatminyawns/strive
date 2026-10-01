@@ -8,6 +8,13 @@ compatibility_date = "2026-07-01"
 #   WELLSAID_API_KEY   — developer.wellsaidlabs.com (legacy /voice fallback)
 #   ATHLETE_KEYS       — JSON {"<studio key>": "<athlete id>"} for POST /v1/auth/athlete
 #   AUTOPILOT_MODE     — "review" (default) | "grounded" — see below
+#   RESEND_API_KEY     — resend.com API key: sends v1.2 sign-in codes (email sign-in is on when this
+#                        and EMAIL_FROM are both set)
+#   EMAIL_FROM         — e.g. "Strive <signin@yourdomain.com>", on a domain verified in Resend
+#   GOOGLE_CLIENT_ID   — Google OAuth Web client id for "Sign in with Google" (public, but a secret so
+#                        a deploy never resets it)
+# Optional: EMAIL_DAILY_CAP (sign-in emails per 24 h across everyone, default 500). Test-only overrides
+# RESEND_BASE_URL / GOOGLE_JWKS_URL are ignored unless they point at 127.0.0.1 / localhost.
 
 [vars]
 ALLOWED_ORIGINS = "https://billyatminyawns.github.io,http://localhost:8642,http://127.0.0.1:8642"

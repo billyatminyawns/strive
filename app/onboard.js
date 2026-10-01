@@ -1,7 +1,9 @@
-// Onboarding: invite code → interests (fans), studio key (athletes).
-import { esc, attr, ava, toast, busy } from './ui.js';
-import { state, render, firstName, signInFan, signInAthlete, completeOnboarding } from './state.js';
+// Onboarding: invite code → interests → save your seat (fans), studio key (athletes), and sign-in
+// for anyone coming back on another device.
+import { esc, attr, icon, ava, toast, busy } from './ui.js';
+import { state, set, render, firstName, signInFan, signInAthlete, completeOnboarding } from './state.js';
 import { message } from './api.js';
+import { block, available, isIOS, inAppBrowser, standalone } from './signin.js';
 
 export const INTERESTS = ['Mindset', 'Nutrition', 'Recovery', 'Training', 'Stories', 'Leadership', 'Culture', 'Hockey IQ'];
 const ui = { codeError: '', keyError: '', picked: ['Mindset', 'Stories'] };
@@ -16,6 +18,20 @@ const invited = (() => {
 })();
 
 const legal = `<div class="legal"><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="support.html">Support</a></div>`;
+const welcomeToast = () => toast(`Welcome — ${firstName()} is glad you're here.`);
+
+// In-app browsers forget you; on iPhone the Home Screen app keeps its own sign-in, so join from there.
+function hint() {
+  if (inAppBrowser) {
+    return `<div class="hint">${icon.info}<span>For the best experience, open Strive in ${isIOS ? 'Safari' : 'Chrome'} — tap <b>⋯</b>, then <b>Open in browser</b>.</span></div>`;
+  }
+  if (isIOS && !standalone()) {
+    return `<div class="hint">${icon.share}<span><b>On iPhone?</b> Add Strive to your Home Screen first — tap Share, then “Add to Home Screen” — and join from there.</span></div>`;
+  }
+  return '';
+}
+
+function saveDone() { set({ phase: 'fan' }); location.hash = '#/home'; }
 
 export const screens = {
   welcome: {
@@ -38,6 +54,10 @@ export const screens = {
             ${ui.codeError ? `<p class="err-text" role="alert" style="margin:0">${esc(ui.codeError)}</p>` : ''}
             <button class="btn block" type="submit">Unlock</button>
           </form>
+          ${available() ? (standalone()
+            ? `<a class="btn line block" href="#/sign-in">I already joined — sign in</a>`
+            : `<a class="link" href="#/sign-in" style="padding:2px 0">Already joined? Sign in</a>`) : ''}
+          ${hint()}
           <p class="tiny dim" style="margin:0">${state.config.autopilot ? 'Replies are written or approved by Angela — or clearly marked AI Coach — and spoken in her AI voice.' : 'Every reply is written or approved by Angela, then spoken in her AI voice.'}</p>
           <a class="link" href="#/studio-sign-in" style="color:var(--lav);padding:6px 0">I'm an athlete — sign in to my studio</a>
           ${legal}
@@ -70,6 +90,37 @@ export const screens = {
       </div>`,
   },
 
+  signIn: {
+    bare: true,
+    render: () => `
+      <div class="wrap stack gap20" style="max-width:460px;padding-top:28px">
+        <a class="link dim" href="#/">← Back</a>
+        <div class="stack gap10">
+          <h1>Welcome back</h1>
+          <p class="muted" style="margin:0">Sign in with the email or Google account you saved your seat with — your questions and saved replies come with you.</p>
+        </div>
+        ${block('signin')}
+        <p class="small dim" style="margin:0">New here? <a class="link" href="#/">Use your invite code</a>. Athlete? Use your
+          <a class="link" href="#/studio-sign-in" style="color:var(--lav)">studio key</a> once, then add Google or email in Studio settings.</p>
+        ${legal}
+      </div>`,
+  },
+
+  saveSeat: {
+    bare: true,
+    render: () => `
+      <div class="wrap stack gap20" style="max-width:460px;padding-top:28px">
+        <div class="center stack gap10" style="align-items:center">
+          ${ava(state.athlete, 84)}
+          <h1>Save your seat</h1>
+          <p class="muted" style="margin:0">So you can get back in on any phone${isIOS && !standalone() ? ' — including the Home Screen app, which signs in separately on iPhone' : ''}. Your questions and saved replies come with you.</p>
+        </div>
+        ${block('link', { onLinked: saveDone })}
+        <button class="btn quiet" data-act="skipSave">Not now</button>
+        <p class="tiny dim center" style="margin:0">We only use your email to sign you in — no newsletters.</p>
+      </div>`,
+  },
+
   studioSignIn: {
     bare: true,
     render: () => `
@@ -87,6 +138,8 @@ export const screens = {
           ${ui.keyError ? `<p class="err-text" role="alert" style="margin:0">${esc(ui.keyError)}</p>` : ''}
           <button class="btn lav block" type="submit">Sign in</button>
         </form>
+        ${available() ? `<div class="or"><span>or</span></div><a class="btn line block" href="#/sign-in">Sign in with Google or email</a>
+          <p class="tiny dim" style="margin:0">Works once you've set it up in Studio settings.</p>` : ''}
         ${legal}
       </div>`,
   },
@@ -100,9 +153,11 @@ export const acts = {
     render();
   },
   async skipJoin(el) {
-    await busy(el, () => completeOnboarding('', []));
+    await busy(el, () => completeOnboarding('', [], { save: available() }));
+    if (state.phase === 'fan') welcomeToast();
     location.hash = '#/home';
   },
+  skipSave() { saveDone(); welcomeToast(); },
 };
 
 export const inputs = {
@@ -131,8 +186,8 @@ export const forms = {
     });
   },
   async finishJoin(form) {
-    await busy(form.querySelector('button[type=submit]'), () => completeOnboarding(form.name.value, ui.picked.slice()));
-    toast(`Welcome — ${firstName()} is glad you're here.`);
+    await busy(form.querySelector('button[type=submit]'), () => completeOnboarding(form.name.value, ui.picked.slice(), { save: available() }));
+    if (state.phase === 'fan') welcomeToast();
     location.hash = '#/home';
   },
   async studioKey(form) {

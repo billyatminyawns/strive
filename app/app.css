@@ -253,3 +253,17 @@ textarea.field { resize: vertical; min-height: 140px; line-height: 1.55; }
 .empty .ico svg { width: 24px; height: 24px; }
 .legal { display: flex; justify-content: center; gap: 14px; font-size: 12px; }
 .legal a { color: var(--dim2); text-decoration: none; font-weight: 700; }
+
+/* ---------- sign-in ---------- */
+.or { display: flex; align-items: center; gap: 12px; color: var(--dim); font-size: 11.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .1em; }
+.or::before, .or::after { content: ''; flex: 1; height: 1px; background: var(--line2); }
+.gbtn { min-height: 44px; display: flex; justify-content: center; color-scheme: normal; }
+.signin .code-input { letter-spacing: .45em; font-size: 24px; }
+.hint { display: flex; gap: 12px; align-items: flex-start; text-align: left; padding: 12px 14px; border-radius: 16px;
+  background: var(--card); border: 1px solid var(--line2); font-size: 13px; color: var(--sub2); line-height: 1.45; }
+.hint svg { width: 18px; height: 18px; flex-shrink: 0; color: var(--mint); margin-top: 1px; }
+.hint b { color: var(--txt2); }
+.ico-pill { width: 34px; height: 34px; border-radius: 50%; background: var(--raised); display: inline-flex; align-items: center;
+  justify-content: center; flex-shrink: 0; color: var(--mint); font-size: 15px; }
+.ico-pill svg { width: 17px; height: 17px; }
+.btn svg { width: 18px; height: 18px; flex-shrink: 0; }

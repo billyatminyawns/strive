@@ -1,10 +1,11 @@
 // Fan app: Home · Ask · Library · You · Notifications. Everything shown is athlete-approved (or clearly
 // labelled AI when Coach Angela answers on autopilot).
 import { esc, attr, icon, clock, rel, greeting, today, ava, initial, photo, wave, playBtn, disclose, toast, sheet, busy, emptyState, spinner } from './ui.js';
-import { state, set, render, firstName, cache, updateProfile, updateAthlete, deleteAccount } from './state.js';
+import { state, set, render, firstName, cache, updateProfile, updateAthlete, deleteAccount, signOut } from './state.js';
 import { api, message } from './api.js';
 import { player, dropItem, replyItem, bioItem } from './player.js';
 import { INTERESTS } from './onboard.js';
+import { identitiesCard, available as signInAvailable, isIOS, inAppBrowser, standalone } from './signin.js';
 
 const ui = { libraryTab: 'saved', sending: false, askedOnce: false };
 
@@ -98,21 +99,28 @@ function exchange(q) {
   return me;
 }
 
+// On iPhone the Home Screen app has its own storage, so it only helps once the seat is saved.
 const installCard = () => {
-  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
-  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
-  if (standalone || cache('installHidden')) return '';
+  if (standalone() || inAppBrowser || cache('installHidden')) return '';
+  const share = `<span style="color:var(--mint);width:22px;height:22px;display:inline-flex">${icon.share}</span>`;
+  const dismiss = `<button class="btn quiet" data-act="hideInstall" aria-label="Dismiss">${icon.x}</button>`;
   if (window.__installPrompt) {
-    return `<div class="card row"><span style="color:var(--mint);width:22px;height:22px;display:inline-flex">${icon.share}</span>
+    return `<div class="card row">${share}
       <div class="grow"><b>Install Strive</b><div class="tiny dim">One tap to open, like any app.</div></div>
-      <button class="btn sm" data-act="install">Install</button><button class="btn quiet" data-act="hideInstall" aria-label="Dismiss">${icon.x}</button></div>`;
+      <button class="btn sm" data-act="install">Install</button>${dismiss}</div>`;
   }
-  if (ios) {
-    return `<div class="card row"><span style="color:var(--mint);width:22px;height:22px;display:inline-flex">${icon.share}</span>
-      <div class="grow"><b>Add Strive to your Home Screen</b><div class="tiny dim">In Safari, tap Share, then “Add to Home Screen”.</div></div>
-      <button class="btn quiet" data-act="hideInstall" aria-label="Dismiss">${icon.x}</button></div>`;
+  if (!isIOS) return '';
+  const saved = state.identities.length;
+  if (!saved && !signInAvailable()) return ''; // the Home Screen app would start a brand-new account
+  if (!saved) {
+    return `<div class="card row">${share}
+      <div class="grow"><b>Save your seat, then add Strive to your Home Screen</b><div class="tiny dim">On iPhone the Home Screen app signs in separately — save your seat first so you can get back in there.</div></div>
+      <button class="btn sm" data-act="openSignin">Save</button>${dismiss}</div>`;
   }
-  return '';
+  const email = state.identities.find((i) => i.email)?.email;
+  return `<div class="card row">${share}
+    <div class="grow"><b>Add Strive to your Home Screen</b><div class="tiny dim">In Safari, tap Share, then “Add to Home Screen”. Open it and sign in${email ? ` with an email code to ${esc(email)}` : ''}.</div></div>
+    ${dismiss}</div>`;
 };
 
 // ---------- screens ----------
@@ -234,6 +242,7 @@ export const screens = {
       return `<div class="wrap stack gap20">
         <header class="row">${initial(u.name || 'F', 58)}<div class="grow"><h1 style="font-size:23px">${esc(u.name || 'Founding fan')}</h1>
           <div class="small dim">Founding fan of ${esc(a?.name || 'Angela Ruggiero')}${since ? ` · since ${esc(since)}` : ''}</div></div></header>
+        ${identitiesCard('fan')}
         <form class="card stack gap10" data-form="saveName" novalidate>
           <label class="label" for="you-name">What ${esc(firstName())} calls you</label>
           <div class="row"><input id="you-name" name="name" class="field" value="${esc(u.name || '')}" placeholder="Your first name" maxlength="40" autocomplete="given-name" data-keep="you-name">
@@ -250,7 +259,10 @@ export const screens = {
           <a class="list-row" href="privacy.html">Privacy Policy <span style="width:16px;height:16px;color:var(--dim);display:inline-flex">${icon.chev}</span></a>
           <a class="list-row" href="terms.html">Terms of Use <span style="width:16px;height:16px;color:var(--dim);display:inline-flex">${icon.chev}</span></a>
           <a class="list-row" href="support.html">Help &amp; support <span style="width:16px;height:16px;color:var(--dim);display:inline-flex">${icon.chev}</span></a></section>
-        <p class="tiny dim center" style="margin:0">Your account lives in this browser. Deleting it removes your profile, questions and saved replies for good.</p>
+        ${state.identities.length ? `<button class="btn line plain block" data-act="fanSignOut">Sign out</button>` : ''}
+        <p class="tiny dim center" style="margin:0">${state.identities.length
+          ? 'Deleting your account removes your profile, questions, saved replies and sign-in details for good.'
+          : 'Your account lives in this browser. Deleting it removes your profile, questions and saved replies for good.'}</p>
         <button class="btn danger block" data-act="deleteAccount">Delete my account</button>
       </div>`;
     },
@@ -276,6 +288,13 @@ export const screens = {
 
 // ---------- actions ----------
 export const acts = {
+  fanSignOut() {
+    const how = state.identities.map((i) => (i.provider === 'google' ? 'Google' : i.email)).join(' or ');
+    const s = sheet(`<div class="stack gap14"><h2 style="margin:0;color:var(--txt);font-size:20px">Sign out?</h2>
+      <p class="small muted" style="margin:0">Sign back in anytime with ${esc(how)}.</p>
+      <button class="btn block" id="confirm-signout">Sign out</button><button class="btn quiet" data-close>Stay signed in</button></div>`);
+    s.el.querySelector('#confirm-signout').addEventListener('click', async (e) => { await busy(e.currentTarget, signOut); s.close(); });
+  },
   reloadHome: () => loadHome(),
   libraryTab(el) { ui.libraryTab = JSON.parse(el.dataset.arg); render(); },
   askSuggestion(el) { send(JSON.parse(el.dataset.arg)); },

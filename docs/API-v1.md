@@ -217,3 +217,98 @@ Every `/v1/*` route answers browser origins listed in `ALLOWED_ORIGINS` (plus `h
 - A brain decline's `note` is Coach Angela's own redirect (first person); the crisis `note` is the fixed safety message. Neither is voiced.
 - `revise` still uses the plain drafter: `draftSource` becomes `"claude"`; `sources`/`confidence`/`reason` keep the brain's pass.
 - Browser audio: `GET /v1/audio/:key` needs the `Authorization` header, so fetch the clip and play it from a blob URL (`Range` isn't among the allowed request headers).
+
+---
+
+## v1.2 — Sign-in: email codes + Google (10/1/26)
+
+Why: accounts started as a bearer token in one browser. On iPhone the Home Screen app has storage
+separate from Safari (so "Add to Home Screen" meant a brand-new account), and switching phones or
+clearing data lost everything. Sign-in lets a fan or athlete get back into the **same** account
+anywhere. The invite code still gates **new** accounts — sign-in only links and restores.
+
+### Config
+`GET /v1/config` adds `signIn: { email: boolean, google: string | null }`.
+`email` = `RESEND_API_KEY` and `EMAIL_FROM` are set; `google` = the public OAuth Web client id
+(`GOOGLE_CLIENT_ID`) or `null`. Clients hide whatever is off.
+
+### Two modes on every sign-in route (bearer token optional)
+- **No token → sign in.** Find the account linked to this identity →
+  `200 { token, user, athlete, identities }`.
+- **Token → link** the identity to the signed-in user (fan or athlete) →
+  `200 { linked: true, user, identities }`, or the empty-account switch below →
+  `200 { switched: true, token, user, athlete, identities }`.
+
+### Identities
+- `email`: subject = normalized email (trimmed, lowercased; ≤ 254 chars).
+- `google`: subject = the ID token's `sub`; its `email` is stored (for display and matching) only
+  when `email_verified` is true.
+- Unique per (provider, subject, **athlete room**): one person can have separate accounts in
+  different athletes' rooms; inside a room an identity belongs to exactly one user. Max 5 per user.
+- An **email code** signs into accounts linked by that email address **or** by a Google identity
+  whose verified email is that address (so a Gmail user can use a code inside the iPhone Home Screen
+  app, where Google's sign-in window doesn't work).
+- Several matches (several rooms) → prefer the athlete account, then the newest.
+
+### Routes
+`POST /v1/auth/email/start` `{ email }` → `202 { sent: true, expiresIn: 600 }`
+- Sends a 6-digit code (valid 10 min). A new code replaces older ones for that address; only the
+  newest works. Codes are stored as SHA-256 hashes and bound to the mode (a link code records the
+  requesting user and only that user can verify it).
+- 400 "Enter a valid email address." · sign-in mode with no matching account → 404 "No Strive
+  account uses this email yet. New here? Use your invite code." · 429 (per address 3 / 15 min and
+  10 / day; per IP 20 / hour) "We just sent you a code — check your inbox (and spam), or try again
+  in a few minutes." · global daily cap (`EMAIL_DAILY_CAP`, default 500) → 503 "Sign-in email is
+  busy — try again later." · not configured → 503 "Email sign-in isn't set up yet." · provider
+  failure → 502 "We couldn't send that email — try again."
+- Email: From `EMAIL_FROM`, Subject "Your Strive code: 123456", plain text + minimal HTML, no
+  tracking: "Your Strive sign-in code is 123456. It expires in 10 minutes. If you didn't ask for it,
+  ignore this email — nobody can get in without the code."
+
+`POST /v1/auth/email/verify` `{ email, code }` → identity flow
+- 400 "That code isn't right." (counts an attempt) · 410 "That code has expired — send a new one."
+  (none / expired / used / other mode or user) · 429 "Too many tries — send a new code." (5 wrong
+  tries burn the code).
+
+`POST /v1/auth/google` `{ credential }` → identity flow
+- Verifies the Google ID token: RS256 against Google's JWKS (cached per Cache-Control), `aud` =
+  `GOOGLE_CLIENT_ID`, `iss` ∈ {accounts.google.com, https://accounts.google.com}, `exp` (60 s skew),
+  `iat` not in the future. 401 "Google sign-in didn't work — try again." · 503 "Google sign-in isn't
+  set up yet." · sign-in mode with no match → 404 "No Strive account uses this Google account yet.
+  New here? Use your invite code."
+
+Identity flow, **link mode**:
+- Already linked to this user → 200 `linked` (idempotent).
+- Linked to **another** user in this room:
+  - the current user is a fan with **no activity** (no questions, saves or listens) → **switch**:
+    sign into the existing account (new token), delete the empty current account and its tokens →
+    `200 { switched: true, token, user, athlete, identities }`. (This is the iPhone case: someone
+    re-joins in the Home Screen app, then saves their seat with the address they used in Safari.)
+  - otherwise 409 "That email already belongs to another Strive account. Sign out, then sign in
+    with it." (Google: "That Google account already belongs…")
+- 6th identity → 400 "That's the most sign-in methods one account can have."
+
+`GET /v1/me` adds `identities: [{ id, provider: "email" | "google", email, createdAt }]`.
+`DELETE /v1/me/identities/:id` (any role) → `200 { identities }`; 404 if it isn't the caller's.
+`DELETE /v1/me` (fans) also deletes the fan's identities and any login codes for their addresses.
+Per-IP `authAttempt` counting also covers verify and Google calls.
+
+### Server config
+Secrets (`npx wrangler secret put …`): `RESEND_API_KEY`, `EMAIL_FROM` (e.g.
+`Strive <signin@yourdomain.com>`, a domain verified in Resend), `GOOGLE_CLIENT_ID` (public value,
+kept as a secret so deploys never reset it). Optional: `EMAIL_DAILY_CAP`.
+Test-only overrides `RESEND_BASE_URL` / `GOOGLE_JWKS_URL` are honoured **only** for loopback URLs.
+Never log codes or full addresses.
+
+### Server notes (v1.2 implementation)
+Where the server pins down or goes beyond the contract above. Response shapes are as documented.
+- **Deploy order:** apply `schema.sql` (two new tables only) before deploying the worker — `GET /v1/me` reads `identities`.
+- **Optional auth:** the three sign-in routes work signed out, but a token that is sent must be valid (else the usual 401 "Your session has ended — sign in again."). So in link mode a 401 can also be Google's "Google sign-in didn't work — try again." — that one is not a session problem; tell them apart by the message.
+- **Start** checks, in order: 503 off · 400 address · per-IP limit (counts every valid request, 404s included, so addresses can't be probed in bulk) · signed out: 404 · signed in with five methods already (and not this address): 400 "That's the most sign-in methods one account can have." before any email · per-address limits · daily cap. A send that fails (502) leaves no usable code and doesn't count against the address.
+- **Codes:** only the newest code for an address is checked, so an older one gets 400 "That code isn't right." (and counts a try); the 5th wrong try itself answers 429. Spaces and hyphens in `code` are ignored. Verify also answers 503 while email sign-in is off.
+- **Who holds an address in a room (link mode):** the user with that email identity, else the user whose Google identity has it as its verified address (the accounts an email code signs into). So saving your seat with the address of a Google account linked elsewhere switches (or 409s) instead of starting a second account; after such a switch the address is also linked to that account (if it has room). Google links and signs in by account (`sub`) only — never via an email identity with the same address.
+- **One address, two accounts in one room** (an email identity on one, a Google account sharing the address on another): an email code picks the athlete account, then the email identity's account; across rooms the athlete-then-newest rule applies.
+- **Google:** missing or non-string `credential` → 400 (same message); `aud` must equal `GOOGLE_CLIENT_ID`; `iat`/`nbf` get the same 60 s skew as `exp`; Google's keys unreachable (and none cached) → 502 "Google sign-in didn't work — try again.". The stored address follows the account: every Google sign-in or link refreshes it, and clears it once Google stops marking it verified.
+- **Switch:** the empty account's tokens, devices, notifications and identities go with it. Athletes never switch (409).
+- **Identities** are listed oldest first; an email identity's `email` is its address. `DELETE /v1/me/identities/:id` 404 → "That sign-in method isn't on your account." Removing the last one is allowed.
+- **Deleting a fan** removes login codes for every address on its identities (email and verified Google). Link codes it requested for other addresses die with the user but stay until the daily cron, which deletes login codes older than 24 h, so per-address limits still hold.

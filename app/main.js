@@ -5,11 +5,12 @@ import { player, sync } from './player.js';
 import * as onboard from './onboard.js';
 import * as fan from './fan.js';
 import * as studio from './studio.js';
+import * as signin from './signin.js';
 
 const root = document.getElementById('app');
-const acts = { ...onboard.acts, ...fan.acts, ...studio.acts };
-const forms = { ...onboard.forms, ...fan.forms, ...studio.forms };
-const inputs = { ...onboard.inputs, ...fan.inputs };
+const acts = { ...onboard.acts, ...fan.acts, ...studio.acts, ...signin.acts };
+const forms = { ...onboard.forms, ...fan.forms, ...studio.forms, ...signin.forms };
+const inputs = { ...onboard.inputs, ...fan.inputs, ...signin.inputs };
 const keys = { ...fan.keys };
 
 // ---------- routing ----------
@@ -24,9 +25,11 @@ function resolve() {
   if (phase === 'loading') return { name: 'loading', screen: splash };
   if (phase === 'signedOut') {
     if (parts[0] === 'studio-sign-in') return { name: 'studioSignIn', screen: onboard.screens.studioSignIn };
+    if (parts[0] === 'sign-in') return { name: 'signIn', screen: onboard.screens.signIn };
     return redirect('', { name: 'welcome', screen: onboard.screens.welcome });
   }
   if (phase === 'interests') return { name: 'interests', screen: onboard.screens.interests };
+  if (phase === 'save') return { name: 'save', screen: onboard.screens.saveSeat };
   if (phase === 'athlete') {
     if (parts[0] !== 'studio') return redirect('studio', { name: 'studio', screen: STUDIO[''] });
     const sub = parts[1] || '';
@@ -96,6 +99,7 @@ function renderApp() {
     r.screen.enter && r.screen.enter(r.arg);
   }
   r.screen.mount && r.screen.mount(r.arg);
+  signin.mountGoogle(root);
   sync();
 }
 onRender(renderApp);

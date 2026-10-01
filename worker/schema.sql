@@ -4,6 +4,8 @@
 -- v1.1 (10/1/26, Coach Angela brain) added athletes.autopilot, questions.answered_by/note/sources/
 -- confidence/reason/reviewed and draft_source 'coach'. CREATE IF NOT EXISTS won't add them to an older
 -- database (and SQLite can't alter a CHECK): production D1 is created fresh from this file by go-live.sh.
+-- v1.2 (10/1/26, sign-in) adds two NEW tables, identities and login_codes, and touches nothing else, so
+-- re-applying this file to the live database is safe. Apply it BEFORE deploying the v1.2 worker.
 
 CREATE TABLE IF NOT EXISTS athletes (
   id            TEXT PRIMARY KEY,
@@ -185,3 +187,34 @@ CREATE TABLE IF NOT EXISTS rate_limits (
   count        INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (bucket, window_start)
 );
+
+-- v1.2 sign-in. An identity links a way of signing in to one user, unique per athlete room: the same
+-- person can have separate accounts in different rooms, but inside a room an identity has one owner.
+CREATE TABLE IF NOT EXISTS identities (
+  id         TEXT PRIMARY KEY,
+  user_id    TEXT NOT NULL,
+  athlete_id TEXT NOT NULL,                                -- the room (the user's athlete_id)
+  provider   TEXT NOT NULL CHECK (provider IN ('email', 'google')),
+  subject    TEXT NOT NULL,                                -- normalized address (email) or the ID token's sub (google)
+  email      TEXT,                                         -- email: the address. google: its address, only while Google says verified
+  created_at INTEGER NOT NULL,
+  UNIQUE (provider, subject, athlete_id)
+);
+CREATE INDEX IF NOT EXISTS identities_user ON identities (user_id);
+CREATE INDEX IF NOT EXISTS identities_email ON identities (email);
+
+-- 6-digit email codes. Never stored — only SHA-256 of "<id>:<code>". user_id set = a link code (only that
+-- user can use it), NULL = a sign-in code. Rows outlive the 10-minute codes by a day because the
+-- per-address limits count them. The daily cron deletes older ones.
+CREATE TABLE IF NOT EXISTS login_codes (
+  id         TEXT PRIMARY KEY,
+  email      TEXT NOT NULL,                                -- normalized address
+  code_hash  TEXT NOT NULL,
+  user_id    TEXT,
+  attempts   INTEGER NOT NULL DEFAULT 0,                   -- wrong tries (5 burn the code)
+  expires_at INTEGER NOT NULL,
+  used_at    INTEGER,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS login_codes_email ON login_codes (email, created_at);
+CREATE INDEX IF NOT EXISTS login_codes_created ON login_codes (created_at);

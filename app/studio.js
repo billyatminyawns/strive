@@ -4,6 +4,7 @@ import { state, set, render, firstName, signOut } from './state.js';
 import { api, message } from './api.js';
 import { player, replyItem } from './player.js';
 import { startRecording, canRecord, canTranscribe, dictate, toBase64 } from './recorder.js';
+import { identitiesCard } from './signin.js';
 
 const ui = { previewing: null, rec: null, recording: false, take: null, live: '', saving: false, selected: 'drop', dragX: 0, working: null };
 
@@ -228,6 +229,7 @@ export const screens = {
           ${published.length ? published.map((d) => `<div class="row"><div class="grow"><b class="ellipsis" style="display:block">${esc(d.title)}</b><span class="tiny dim">${d.listens || 0} listens · ${esc(rel(d.publishedAt))}</span></div>
               <button class="btn ${d.pinned ? '' : 'line'} sm" data-act="pin" data-arg="${attr({ id: d.id, pinned: !d.pinned })}">${d.pinned ? 'Pinned' : 'Pin'}</button></div>`).join('')
             : '<p class="small muted" style="margin:0">Nothing published yet. Approve a drafted drop on Today and it ships at 7 AM.</p>'}</section>
+        ${identitiesCard('athlete')}
         <section class="card" style="padding:4px 14px">
           <a class="list-row" href="privacy.html">Privacy Policy</a><a class="list-row" href="terms.html">Terms of Use</a><a class="list-row" href="support.html">Help &amp; support</a>
           <button class="list-row" style="width:100%;color:var(--red)" data-act="signOut">Sign out</button></section>

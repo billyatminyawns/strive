@@ -51,7 +51,8 @@ async function request(method, path, body, accept = 'application/json') {
   if (!res.ok) {
     let message = '';
     try { message = (await res.json()).error || ''; } catch {}
-    if (res.status === 401 && token) onUnauthorized();
+    // a 401 from auth/* means "that credential didn't work", not "your session ended" — keep the session
+    if (res.status === 401 && token && !path.startsWith('auth/')) onUnauthorized();
     throw new ApiError(res.status, message || fallback(res.status));
   }
   return res;

@@ -3,13 +3,15 @@
    never mix; KV (binding AUDIO) holds voice clips (see voice.js). Fan routes only ever read approved
    content: published drops, answered/instant replies and an approved bio — plus, when Angela has
    switched autopilot on, Coach Angela's grounded answers (brain.js), which she can keep or retract.
-   New questions go to the brain (think) in the background; draft.js now only serves revise. */
+   New questions go to the brain (think) in the background; draft.js now only serves revise.
+   v1.2 adds sign-in (email codes + Google) in signin.js, which shares this file's plumbing. */
 
 import { renderVoice, VoiceError } from './voice.js';
 import { isSensitive, matchKb, byRelevance, coverage } from './match.js';
 import { draftReply } from './draft.js';
 import { pushConfigured, pushToUser, pushToFans } from './push.js';
 import { think, isCrisis, CRISIS_TEXT, DECLINE_FALLBACK } from './brain.js';
+import { signInConfig, emailStart, emailVerify, googleSignIn, deleteIdentity, identitiesOf } from './signin.js';
 
 const HOUR = 3600e3, DAY = 24 * HOUR;
 const QUESTIONS_PER_DAY = 10;
@@ -82,6 +84,9 @@ function bool(v, field) {
   if (typeof v !== 'boolean') fail(400, `${field} must be true or false.`);
   return v;
 }
+
+// shared with signin.js (it imports these back; only ever called at request time, so the cycle is safe)
+export { fail, json, body, stmt, one, all, run, newId, newToken, sha256, userOut, athleteOut, authAttempt, ipCount };
 
 /* ---------- serializers ---------- */
 
@@ -300,13 +305,17 @@ async function authenticate(c, role) {
   }
 }
 
-// fixed hourly windows per IP, counted in D1 so every isolate sees the same number
-async function authAttempt(c) {
+// fixed hourly windows per IP, counted in D1 so every isolate sees the same number → this hour's count
+async function ipCount(c, kind) {
   const ip = c.request.headers.get('cf-connecting-ip') || 'unknown';
   const start = Math.floor(Date.now() / HOUR) * HOUR;
   const row = await one(c.env, `INSERT INTO rate_limits (bucket, window_start, count) VALUES (?, ?, 1)
-    ON CONFLICT (bucket, window_start) DO UPDATE SET count = count + 1 RETURNING count`, 'auth:' + ip, start);
-  if (row.count > (Number(c.env.AUTH_ATTEMPTS_PER_HOUR) || AUTH_PER_HOUR)) fail(429, 'Too many sign-in attempts — try again in an hour.');
+    ON CONFLICT (bucket, window_start) DO UPDATE SET count = count + 1 RETURNING count`, kind + ':' + ip, start);
+  return row.count;
+}
+
+async function authAttempt(c) {
+  if (await ipCount(c, 'auth') > (Number(c.env.AUTH_ATTEMPTS_PER_HOUR) || AUTH_PER_HOUR)) fail(429, 'Too many sign-in attempts — try again in an hour.');
 }
 
 let keyCache = null;  // ATHLETE_KEYS as [[sha256(key), athleteId]], rebuilt if the secret changes
@@ -331,6 +340,7 @@ async function getConfig({ env }) {
     drafting: !!env.ANTHROPIC_API_KEY, voice: !!env.FISH_API_KEY, push: pushConfigured(env), minBuild: Number(env.MIN_BUILD) || 1,
     // the server side of autopilot; Angela's own switch is in her studio settings
     autopilot: env.AUTOPILOT_MODE === 'grounded' && !!env.ANTHROPIC_API_KEY,
+    signIn: signInConfig(env),
   });
 }
 
@@ -376,7 +386,7 @@ async function authAthlete(c) {
 /* ---------- any signed-in user ---------- */
 
 async function getMe(c) {
-  return json({ user: userOut(c.user), athlete: athleteOut(c.athlete) });
+  return json({ user: userOut(c.user), athlete: athleteOut(c.athlete), identities: await identitiesOf(c.env, c.user.id) });
 }
 
 async function patchMe(c) {
@@ -409,7 +419,8 @@ async function signout(c) {
 async function deleteMe(c) {
   const { env, user } = c;
   if (user.role !== 'fan') return signout(c);
-  // library entries approved from this fan's questions carry their words, so they go too
+  // library entries approved from this fan's questions carry their words, so they go too; so do their
+  // sign-in identities and any login codes for their addresses (before the identities that name them)
   await env.DB.batch([
     stmt(env, 'DELETE FROM kb WHERE source_question_id IN (SELECT id FROM questions WHERE user_id = ?)', user.id),
     stmt(env, `DELETE FROM passed_prompts WHERE prompt_id IN (SELECT 'fan-' || id FROM questions WHERE user_id = ?)`, user.id),
@@ -417,6 +428,8 @@ async function deleteMe(c) {
     stmt(env, 'DELETE FROM listens WHERE user_id = ?', user.id),
     stmt(env, 'DELETE FROM notifications WHERE user_id = ?', user.id),
     stmt(env, 'DELETE FROM devices WHERE user_id = ?', user.id),
+    stmt(env, 'DELETE FROM login_codes WHERE email IN (SELECT email FROM identities WHERE user_id = ? AND email IS NOT NULL)', user.id),
+    stmt(env, 'DELETE FROM identities WHERE user_id = ?', user.id),
     stmt(env, 'DELETE FROM tokens WHERE user_id = ?', user.id),
     stmt(env, 'DELETE FROM users WHERE id = ?', user.id),
   ]);
@@ -894,14 +907,20 @@ async function deleteStory(c) {
 
 /* ---------- routing ---------- */
 
+// role: null = public · 'optional' = signed out is fine, but a token that is sent must be valid ·
+// 'any' = any signed-in user · 'fan' / 'athlete' = that role only
 const ROUTES = [
   ['GET', '/v1/config', null, getConfig],
   ['POST', '/v1/auth/fan', null, authFan],
   ['POST', '/v1/auth/athlete', null, authAthlete],
+  ['POST', '/v1/auth/email/start', 'optional', emailStart],
+  ['POST', '/v1/auth/email/verify', 'optional', emailVerify],
+  ['POST', '/v1/auth/google', 'optional', googleSignIn],
 
   ['GET', '/v1/me', 'any', getMe],
   ['PATCH', '/v1/me', 'any', patchMe],
   ['DELETE', '/v1/me', 'any', deleteMe],
+  ['DELETE', '/v1/me/identities/:id', 'any', deleteIdentity],
   ['POST', '/v1/auth/signout', 'any', signout],
   ['GET', '/v1/audio/:key', 'any', getAudio],
   ['POST', '/v1/devices', 'any', postDevice],
@@ -969,8 +988,12 @@ async function routeV1(request, env, ctx) {
       for (const [k, v] of Object.entries(m.groups || {})) {
         try { params[k] = decodeURIComponent(v); } catch { fail(404, 'Not found.'); }
       }
-      const c = { request, env, ctx, params };
-      if (r.role) await authenticate(c, r.role);
+      const c = { request, env, ctx, params, user: null, athlete: null };
+      if (r.role === 'optional') {
+        if (request.headers.get('authorization')) await authenticate(c, 'any');
+      } else if (r.role) {
+        await authenticate(c, r.role);
+      }
       const res = await r.handler(c);
       return request.method === 'HEAD' ? new Response(null, res) : res;
     }
@@ -982,7 +1005,7 @@ async function routeV1(request, env, ctx) {
   }
 }
 
-/* ---------- daily drop (cron, 14:00 UTC) ---------- */
+/* ---------- daily drop (cron, 14:00 UTC) + housekeeping ---------- */
 
 export async function scheduledV1(env) {
   const now = Date.now();
@@ -999,4 +1022,6 @@ export async function scheduledV1(env) {
     }
   }
   await run(env, 'DELETE FROM rate_limits WHERE window_start < ?', now - 2 * DAY);
+  // login codes live 10 minutes; a day of history is all the per-address limits read
+  await run(env, 'DELETE FROM login_codes WHERE created_at < ?', now - DAY);
 }
